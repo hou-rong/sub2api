@@ -262,7 +262,7 @@
                   :auth-mode="getOpenAIAuthMode(row)"
                   :plan-type="getAccountPlanType(row)"
                   :privacy-mode="row.extra?.privacy_mode || row.parent_privacy_mode"
-                  :subscription-expires-at="row.credentials?.subscription_expires_at || row.parent_subscription_expires_at" />
+                  :subscription-expires-at="getAccountSubscriptionExpiresAt(row)" />
                 <span
                   v-if="getAntigravityTierLabel(row)"
                   :class="['inline-block rounded px-1.5 py-0.5 text-[10px] font-medium', getAntigravityTierClass(row)]"
@@ -754,8 +754,18 @@ const setUsageBatchState = (accountID: number, usage: AccountUsageInfo | null, e
 }
 
 const handleAccountUsageLoaded = (accountID: number, usage: AccountUsageInfo) => {
-  if (usageBatchByAccountId.value[String(accountID)] === usage) return
-  setUsageBatchState(accountID, usage, null)
+  if (usageBatchByAccountId.value[String(accountID)] !== usage) {
+    setUsageBatchState(accountID, usage, null)
+  }
+
+  const row = accounts.value.find((account) => account.id === accountID)
+  if (!row || row.platform !== 'kimi') return
+  const membershipLevel = usage.subscription_tier_raw || usage.subscription_tier
+  if (!membershipLevel) return
+  row.extra = {
+    ...(row.extra || {}),
+    kimi_membership_level: membershipLevel
+  }
 }
 
 const flushQueuedUsageBatch = async () => {
@@ -1584,7 +1594,23 @@ function getAccountPlanType(row: any): string | undefined {
       row.parent_plan_type
     )
   }
+  if (row.platform === 'kimi') {
+    const extra = (row.extra || {}) as Record<string, any>
+    return firstNonBlankString(
+      extra.kimi_membership_level,
+      row.credentials?.plan_type,
+      row.parent_plan_type
+    )
+  }
   return firstNonBlankString(row.credentials?.plan_type, row.parent_plan_type)
+}
+
+function getAccountSubscriptionExpiresAt(row: any): string | undefined {
+  if (!row) return undefined
+  if (row.platform === 'kimi') {
+    return row.extra?.kimi_subscription_expires_at || undefined
+  }
+  return row.credentials?.subscription_expires_at || row.parent_subscription_expires_at || undefined
 }
 
 function getOpenAIAuthMode(row: any): string | undefined {
