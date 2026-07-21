@@ -15,6 +15,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/domain"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/kimi"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai_compat"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 )
@@ -271,8 +272,16 @@ func (a *Account) IsGrokOAuth() bool {
 	return a.IsGrok() && a.Type == AccountTypeOAuth
 }
 
+func (a *Account) IsKimi() bool {
+	return a.Platform == PlatformKimi
+}
+
+func (a *Account) IsKimiOAuth() bool {
+	return a.IsKimi() && a.Type == AccountTypeOAuth
+}
+
 func (a *Account) IsOpenAICompatible() bool {
-	return a != nil && (a.Platform == PlatformOpenAI || a.Platform == PlatformGrok)
+	return a != nil && (a.Platform == PlatformOpenAI || a.Platform == PlatformGrok || a.Platform == PlatformKimi)
 }
 
 func (a *Account) GeminiOAuthType() string {
@@ -599,6 +608,9 @@ func (a *Account) resolveModelMapping(rawMapping map[string]any) map[string]stri
 		if a.Platform == domain.PlatformGrok {
 			return xai.DefaultModelMapping()
 		}
+		if a.Platform == domain.PlatformKimi {
+			return kimi.DefaultModelMapping()
+		}
 		// Bedrock 默认映射由 forwardBedrock 统一处理（需配合 region prefix 调整）
 		return nil
 	}
@@ -609,6 +621,9 @@ func (a *Account) resolveModelMapping(rawMapping map[string]any) map[string]stri
 		}
 		if a.Platform == domain.PlatformGrok {
 			return xai.DefaultModelMapping()
+		}
+		if a.Platform == domain.PlatformKimi {
+			return kimi.DefaultModelMapping()
 		}
 		return nil
 	}
@@ -642,6 +657,9 @@ func (a *Account) resolveModelMapping(rawMapping map[string]any) map[string]stri
 	}
 	if a.Platform == domain.PlatformGrok {
 		return xai.DefaultModelMapping()
+	}
+	if a.Platform == domain.PlatformKimi {
+		return kimi.DefaultModelMapping()
 	}
 	return nil
 }
@@ -1390,6 +1408,39 @@ func (a *Account) GetGrokRefreshToken() string {
 	return a.GetCredential("refresh_token")
 }
 
+func (a *Account) GetKimiBaseURL() string {
+	if !a.IsKimi() {
+		return ""
+	}
+	baseURL := a.GetCredential("base_url")
+	if baseURL != "" {
+		return baseURL
+	}
+	return kimi.DefaultBaseURL
+}
+
+func (a *Account) GetKimiAccessToken() string {
+	if !a.IsKimi() {
+		return ""
+	}
+	return a.GetCredential("access_token")
+}
+
+func (a *Account) GetKimiRefreshToken() string {
+	if !a.IsKimiOAuth() {
+		return ""
+	}
+	return a.GetCredential("refresh_token")
+}
+
+// GetKimiDeviceID 返回指纹头 X-Msh-Device-Id 使用的稳定设备 ID（建号时生成并持久化）。
+func (a *Account) GetKimiDeviceID() string {
+	if !a.IsKimi() {
+		return ""
+	}
+	return a.GetCredential("device_id")
+}
+
 func (a *Account) GetOpenAIIDToken() string {
 	if !a.IsOpenAIOAuth() {
 		return ""
@@ -1484,6 +1535,10 @@ func (a *Account) SupportsOpenAIEndpointCapability(capability OpenAIEndpointCapa
 		default:
 			return false
 		}
+	}
+	// Kimi 上游仅提供 OpenAI 兼容的 /chat/completions（不支持 /responses）。
+	if a.IsKimi() {
+		return capability == OpenAIEndpointCapabilityChatCompletions
 	}
 	switch capability {
 	case OpenAIEndpointCapabilityChatCompletions:

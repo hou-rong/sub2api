@@ -32,6 +32,12 @@
     <circle cx="18" cy="18" r="3" />
     <path stroke-linecap="round" stroke-linejoin="round" d="M8.7 10.7 15.3 7.3M8.7 13.3l6.6 3.4" />
   </svg>
+  <!-- Kimi / Moonshot mark (crescent moon) -->
+  <svg v-else-if="platform === 'kimi'" :class="sizeClass" viewBox="0 0 24 24" fill="currentColor">
+    <path
+      d="M21.752 15.002A9.718 9.718 0 0 1 18 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 0 0 3 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 0 0 9.002-5.998z"
+    />
+  </svg>
   <!-- Fallback: generic platform icon -->
   <svg v-else :class="sizeClass" fill="currentColor" viewBox="0 0 24 24">
     <path

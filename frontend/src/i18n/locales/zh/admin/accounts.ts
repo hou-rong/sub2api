@@ -307,6 +307,7 @@ export default {
         gemini: 'Gemini',
         antigravity: 'Antigravity',
         grok: 'Grok',
+        kimi: 'Kimi',
       },
       types: {
         oauth: 'OAuth',
@@ -316,6 +317,7 @@ export default {
         codeAssist: 'Code Assist',
         antigravityOauth: 'Antigravity OAuth',
         grokOauth: 'Grok OAuth',
+        kimiOauth: 'Kimi OAuth',
         antigravityApikey: '通过 Base URL + API Key 连接',
         upstream: '对接上游',
         upstreamDesc: '通过 Base URL + API Key 连接上游'
@@ -733,6 +735,10 @@ export default {
         uploadPreviewAlt: '上传预览',
         fileReadFailed: '读取所选文件失败',
         noResponseBody: '服务器未返回响应体'
+      },
+      kimi: {
+        baseUrlHint: 'Kimi OAuth 账号会转发到官方 Kimi Coding API Base URL。',
+        apiKeyHint: 'Kimi 订阅支持使用 OAuth 设备码登录；API Key 账号不在本次范围内。'
       },
       anthropic: {
         apiKeyPassthrough: '自动透传（仅替换认证）',
@@ -1170,6 +1176,27 @@ export default {
           },
           oauthOnlyHint: '首版 Grok 支持仅包含 OAuth 订阅的 Responses API 文本/推理转发。'
         },
+        kimi: {
+          title: 'Kimi 账号授权',
+          followSteps: '通过设备登录授权您的 Kimi 订阅账号：',
+          step1Start: '发起设备授权以获取用户码',
+          startAuth: '开始设备授权',
+          starting: '正在获取设备码...',
+          restart: '重新发起授权',
+          userCode: '用户码',
+          copyCode: '复制用户码',
+          codeCopied: '用户码已复制',
+          step2Open: '打开验证页面并确认',
+          openUrlDesc: '在浏览器中打开验证页面，登录 Kimi 并确认用户码。',
+          openVerificationPage: '打开验证页面',
+          waiting: '等待您在浏览器中确认...',
+          authorized: '授权成功，正在创建账号...',
+          expired: '设备码已过期，请重新发起授权。',
+          denied: '授权已被拒绝，请重新发起后重试。',
+          failedToStart: '发起 Kimi 设备授权失败',
+          pollFailed: '轮询 Kimi 设备授权状态失败',
+          oauthOnlyHint: 'Kimi 订阅账号仅支持 OAuth 设备码登录（OpenAI 兼容转发）。'
+        },
         // Gemini specific
         gemini: {
           title: 'Gemini 账户授权',
@@ -1396,6 +1423,7 @@ export default {
       geminiAccount: 'Gemini 账号',
       antigravityAccount: 'Antigravity 账号',
       grokAccount: 'Grok 账号',
+      kimiAccount: 'Kimi 账号',
       inputMethod: '输入方式',
       reAuthorizedSuccess: '账号重新授权成功',
       // Test Modal

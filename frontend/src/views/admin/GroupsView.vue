@@ -146,7 +146,9 @@
                       ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
                       : value === 'grok'
                         ? 'bg-zinc-200 text-zinc-800 dark:bg-zinc-700 dark:text-zinc-100'
-                        : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+                        : value === 'kimi'
+                          ? 'bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-400'
+                          : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
               ]"
             >
               <PlatformIcon :platform="value" size="xs" />
@@ -3955,7 +3957,9 @@
                           ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
                           : group.platform === 'grok'
                             ? 'bg-zinc-200 text-zinc-800 dark:bg-zinc-700 dark:text-zinc-100'
-                            : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+                            : group.platform === 'kimi'
+                              ? 'bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-400'
+                              : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
                   ]"
                 >
                   {{ t("admin.groups.platforms." + group.platform) }}
@@ -4718,6 +4722,7 @@ const platformOptions = computed(() => [
   { value: "antigravity", label: "Antigravity" },
   { value: "grok", label: "Grok" },
   { value: "composite", label: "Composite" },
+  { value: "kimi", label: "Kimi" },
 ]);
 
 const platformFilterOptions = computed(() => [
@@ -4728,6 +4733,7 @@ const platformFilterOptions = computed(() => [
   { value: "antigravity", label: "Antigravity" },
   { value: "grok", label: "Grok" },
   { value: "composite", label: "Composite" },
+  { value: "kimi", label: "Kimi" },
 ]);
 
 const compositeRoutePlatformOptions = computed(() => [

@@ -883,6 +883,7 @@ export default {
         antigravity: 'Antigravity',
         grok: 'Grok',
         composite: 'Composite',
+        kimi: 'Kimi',
       },
       saving: '保存中...',
       noGroups: '暂无分组',
