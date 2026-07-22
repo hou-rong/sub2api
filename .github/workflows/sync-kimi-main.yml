@@ -1,0 +1,59 @@
+name: Sync Kimi branch with upstream
+
+on:
+  schedule:
+    - cron: '37 3 * * *'
+      timezone: 'Asia/Shanghai'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-kimi-main
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    if: github.repository == 'hou-rong/sub2api'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out the maintained Kimi branch
+        uses: actions/checkout@v6
+        with:
+          ref: kimi-main
+          fetch-depth: 0
+
+      - name: Rebase onto upstream main
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          git config user.name 'HouRong'
+          git config user.email '8758438+hou-rong@users.noreply.github.com'
+          git remote add upstream-sync https://github.com/Wei-Shaw/sub2api.git
+          git fetch --no-tags upstream-sync main
+
+          if git merge-base --is-ancestor upstream-sync/main HEAD; then
+            echo 'kimi-main is already up to date with upstream/main.' >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          before_sha="$(git rev-parse HEAD)"
+          if ! git rebase upstream-sync/main; then
+            echo '## Kimi branch sync failed' >> "$GITHUB_STEP_SUMMARY"
+            echo 'The upstream update has conflicts that require manual resolution.' >> "$GITHUB_STEP_SUMMARY"
+            git status --short
+            exit 1
+          fi
+
+          after_sha="$(git rev-parse HEAD)"
+          git push --force-with-lease origin HEAD:kimi-main
+
+          {
+            echo '## Kimi branch synchronized'
+            echo "- Previous head: \`$before_sha\`"
+            echo "- Updated head: \`$after_sha\`"
+            echo "- Upstream head: \`$(git rev-parse upstream-sync/main)\`"
+          } >> "$GITHUB_STEP_SUMMARY"
