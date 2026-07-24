@@ -49,6 +49,20 @@ func kimiOAuthTestAccount(id int64) *Account {
 	}
 }
 
+func kimiAPIKeyTestAccount(id int64) *Account {
+	return &Account{
+		ID:          id,
+		Name:        "kimi-api-key",
+		Platform:    PlatformKimi,
+		Type:        AccountTypeAPIKey,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"api_key":  "kimi-secret-key",
+			"base_url": kimi.DefaultBaseURL,
+		},
+	}
+}
+
 func TestForwardAsChatCompletionsForKimiMapsModelAndInjectsFingerprintHeaders(t *testing.T) {
 	// 指纹头用 env 固定，避免依赖运行环境 GOOS/hostname
 	t.Setenv(kimi.EnvDeviceName, "test-host")
@@ -140,6 +154,115 @@ func TestForwardAsChatCompletionsForKimiUsesCustomModelMapping(t *testing.T) {
 	require.Equal(t, "k2p7", gjson.GetBytes(upstream.lastBody, "model").String())
 	require.Equal(t, "my-alias", result.Model)
 	require.Equal(t, "k2p7", result.UpstreamModel)
+}
+
+func TestForwardAsChatCompletionsForKimiAPIKeyPreservesClientIdentity(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	body := []byte(`{"model":"kimi-for-coding","messages":[{"role":"user","content":"hi"}],"stream":false}`)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
+	c.Request.Header.Set("User-Agent", "codex_cli_rs/0.145.0")
+
+	account := kimiAPIKeyTestAccount(74)
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body: io.NopCloser(strings.NewReader(
+			`{"id":"chatcmpl","object":"chat.completion","model":"kimi-for-coding","choices":[],"usage":{"prompt_tokens":1,"completion_tokens":2}}`,
+		)),
+	}}
+	svc := &OpenAIGatewayService{httpUpstream: upstream}
+
+	result, err := svc.ForwardAsChatCompletions(context.Background(), c, account, body, "", "")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, kimi.DefaultBaseURL+"/chat/completions", upstream.lastReq.URL.String())
+	require.Equal(t, "Bearer kimi-secret-key", upstream.lastReq.Header.Get("Authorization"))
+	require.Equal(t, "codex_cli_rs/0.145.0", upstream.lastReq.Header.Get("User-Agent"))
+	require.Empty(t, upstream.lastReq.Header.Get("X-Msh-Platform"))
+	require.Empty(t, upstream.lastReq.Header.Get("X-Msh-Device-Id"))
+}
+
+func TestForwardResponsesForKimiAPIKeyBridgesToChatCompletions(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	body := []byte(`{"model":"kimi-for-coding","input":"hello","stream":false}`)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Request.Header.Set("User-Agent", "codex_cli_rs/0.145.0")
+
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}, "x-request-id": []string{"kimi-response-bridge"}},
+		Body: io.NopCloser(strings.NewReader(
+			`{"id":"chatcmpl_kimi","object":"chat.completion","model":"kimi-for-coding","choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":3,"completion_tokens":2,"total_tokens":5}}`,
+		)),
+	}}
+	svc := &OpenAIGatewayService{
+		cfg:          rawChatCompletionsTestConfig(),
+		httpUpstream: upstream,
+	}
+
+	result, err := svc.Forward(context.Background(), c, kimiAPIKeyTestAccount(75), body)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, kimi.DefaultBaseURL+"/chat/completions", upstream.lastReq.URL.String())
+	require.Equal(t, "Bearer kimi-secret-key", upstream.lastReq.Header.Get("Authorization"))
+	require.Equal(t, "codex_cli_rs/0.145.0", upstream.lastReq.Header.Get("User-Agent"))
+	require.Equal(t, "hello", gjson.GetBytes(upstream.lastBody, "messages.0.content").String())
+	require.Equal(t, "response", gjson.Get(recorder.Body.String(), "object").String())
+	require.Equal(t, "ok", gjson.Get(recorder.Body.String(), "output.0.content.0.text").String())
+	require.Equal(t, 3, result.Usage.InputTokens)
+	require.Equal(t, 2, result.Usage.OutputTokens)
+}
+
+func TestForwardResponsesForKimiAPIKeyStreamsChatCompletionsAsResponses(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	body := []byte(`{"model":"kimi-for-coding","input":"hello","stream":true}`)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Request.Header.Set("User-Agent", "codex_cli_rs/0.145.0")
+
+	upstreamBody := strings.Join([]string{
+		`data: {"id":"chatcmpl_kimi_stream","object":"chat.completion.chunk","model":"kimi-for-coding","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}`,
+		"",
+		`data: {"id":"chatcmpl_kimi_stream","object":"chat.completion.chunk","model":"kimi-for-coding","choices":[{"index":0,"delta":{"content":"ok"},"finish_reason":null}]}`,
+		"",
+		`data: {"id":"chatcmpl_kimi_stream","object":"chat.completion.chunk","model":"kimi-for-coding","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}`,
+		"",
+		`data: {"id":"chatcmpl_kimi_stream","object":"chat.completion.chunk","model":"kimi-for-coding","choices":[],"usage":{"prompt_tokens":4,"completion_tokens":2,"total_tokens":6}}`,
+		"",
+		"data: [DONE]",
+		"",
+	}, "\n")
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}, "x-request-id": []string{"kimi-stream-bridge"}},
+		Body:       io.NopCloser(strings.NewReader(upstreamBody)),
+	}}
+	svc := &OpenAIGatewayService{
+		cfg:          rawChatCompletionsTestConfig(),
+		httpUpstream: upstream,
+	}
+
+	result, err := svc.Forward(context.Background(), c, kimiAPIKeyTestAccount(76), body)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.True(t, result.Stream)
+	require.True(t, gjson.GetBytes(upstream.lastBody, "stream_options.include_usage").Bool())
+	require.Contains(t, recorder.Body.String(), "event: response.output_text.delta")
+	require.Contains(t, recorder.Body.String(), `"delta":"ok"`)
+	require.Contains(t, recorder.Body.String(), "event: response.completed")
+	require.Contains(t, recorder.Body.String(), "data: [DONE]")
+	require.Equal(t, 4, result.Usage.InputTokens)
+	require.Equal(t, 2, result.Usage.OutputTokens)
 }
 
 func TestForwardAsChatCompletionsForKimiStreamingForcesIncludeUsage(t *testing.T) {

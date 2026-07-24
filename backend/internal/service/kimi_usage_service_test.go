@@ -174,3 +174,46 @@ func TestFetchKimiUsageUsesRefreshedTokenAndFingerprint(t *testing.T) {
 		t.Fatalf("User-Agent = %q, want %q", got, kimi.UserAgent)
 	}
 }
+
+func TestFetchKimiUsageSupportsAPIKeyWithoutOAuthFingerprint(t *testing.T) {
+	t.Setenv(kimi.EnvAllowUnsafeURLOverrides, "true")
+	httpStub := &kimiUsageHTTPStub{
+		status: http.StatusOK,
+		response: `{
+			"usage":{"limit":"100","used":"10","resetTime":"2026-07-28T12:00:00Z"},
+			"limits":[{"detail":{"limit":"100","remaining":"90","resetTime":"2026-07-21T17:00:00Z"},"window":{"duration":300,"timeUnit":"TIME_UNIT_MINUTE"}}],
+			"user":{"membership":{"level":"LEVEL_ALLEGRETTO"}}
+		}`,
+	}
+	service := &AccountUsageService{
+		kimiTokenProvider: NewKimiTokenProvider(nil, nil),
+		httpUpstream:      httpStub,
+	}
+	account := &Account{
+		ID:          10,
+		Platform:    PlatformKimi,
+		Type:        AccountTypeAPIKey,
+		Concurrency: 2,
+		Credentials: map[string]any{
+			"api_key":  "kimi-api-key",
+			"base_url": "http://127.0.0.1:9876/coding/v1",
+		},
+	}
+
+	usage, err := service.fetchKimiUsage(context.Background(), account)
+	if err != nil {
+		t.Fatalf("fetchKimiUsage() error = %v", err)
+	}
+	if usage.SubscriptionTier != "ALLEGRETTO" {
+		t.Fatalf("membership = %q, want ALLEGRETTO", usage.SubscriptionTier)
+	}
+	if got := httpStub.request.Header.Get("Authorization"); got != "Bearer kimi-api-key" {
+		t.Fatalf("Authorization = %q", got)
+	}
+	if got := httpStub.request.Header.Get("User-Agent"); got != "sub2api-usage-probe/1.0" {
+		t.Fatalf("User-Agent = %q", got)
+	}
+	if got := httpStub.request.Header.Get("X-Msh-Platform"); got != "" {
+		t.Fatalf("X-Msh-Platform = %q, want empty", got)
+	}
+}

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/kimi"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/gin-gonic/gin"
@@ -100,6 +101,9 @@ func (s *OpenAIGatewayService) failoverOpenAIUpstreamHTTPError(
 	if account != nil && account.Platform == PlatformGrok {
 		s.handleGrokAccountUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody)
 	}
+	if account != nil && account.Platform == PlatformKimi {
+		s.handleKimiAccountUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody)
+	}
 	if !shouldFailover {
 		return nil
 	}
@@ -122,7 +126,7 @@ func (s *OpenAIGatewayService) failoverOpenAIUpstreamHTTPError(
 		Detail:             upstreamDetail,
 	})
 	shouldDisable := tempUnscheduled
-	if account.Platform != PlatformGrok && !tempUnscheduled {
+	if account.Platform != PlatformGrok && account.Platform != PlatformKimi && !tempUnscheduled {
 		shouldDisable = s.handleOpenAIAccountUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody, upstreamModel)
 	}
 	return newOpenAIUpstreamFailoverError(
@@ -136,6 +140,13 @@ func (s *OpenAIGatewayService) failoverOpenAIUpstreamHTTPError(
 
 // openAIChatCompletionsTargetURL 解析账号的（非 Grok）Chat Completions 上游端点。
 func (s *OpenAIGatewayService) openAIChatCompletionsTargetURL(account *Account) (string, error) {
+	if account != nil && account.Platform == PlatformKimi {
+		targetURL, err := kimi.BuildChatCompletionsURL(account.GetKimiBaseURL())
+		if err != nil {
+			return "", fmt.Errorf("invalid kimi base_url: %w", err)
+		}
+		return targetURL, nil
+	}
 	baseURL := account.GetOpenAIBaseURL()
 	if baseURL == "" {
 		baseURL = "https://api.openai.com"
@@ -150,7 +161,11 @@ func (s *OpenAIGatewayService) openAIChatCompletionsTargetURL(account *Account) 
 // resolveCCFallbackTarget 解析两条 CC 回退路径共用的账号凭证与上游端点
 // （回退路径仅面向 APIKey 账号，凭证恒为 openai api_key）。
 func (s *OpenAIGatewayService) resolveCCFallbackTarget(account *Account) (apiKey string, targetURL string, err error) {
-	apiKey = account.GetOpenAIApiKey()
+	if account != nil && account.IsKimiAPIKey() {
+		apiKey = account.GetKimiAPIKey()
+	} else {
+		apiKey = account.GetOpenAIApiKey()
+	}
 	if apiKey == "" {
 		return "", "", fmt.Errorf("account %d missing api_key", account.ID)
 	}
@@ -159,6 +174,16 @@ func (s *OpenAIGatewayService) resolveCCFallbackTarget(account *Account) (apiKey
 		return "", "", err
 	}
 	return apiKey, targetURL, nil
+}
+
+func ccFallbackUserAgent(c *gin.Context, account *Account) string {
+	if account == nil {
+		return ""
+	}
+	if account.IsKimiAPIKey() && c != nil {
+		return strings.TrimSpace(c.GetHeader("User-Agent"))
+	}
+	return account.GetOpenAIUserAgent()
 }
 
 // sendCCUpstreamRequest 构建并发送 CC 上游请求：分离的上游 context、OpenAI HTTP

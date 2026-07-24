@@ -35,6 +35,9 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 	defaultMappedModel string,
 ) (*OpenAIForwardResult, error) {
 	beginUpstreamResponseModelObservation(c)
+	if account != nil && account.IsKimiAPIKey() {
+		return s.forwardAnthropicViaRawChatCompletions(ctx, c, account, body, defaultMappedModel)
+	}
 
 	// 入口分流：APIKey 账号 + 上游不支持 Responses API → 走 CC 直转（与
 	// ForwardAsChatCompletions 对称）。缺少此分流时，/v1/messages 入站请求
@@ -46,10 +49,10 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 
 	startTime := time.Now()
 
-	// Kimi 上游仅提供 OpenAI 兼容 /chat/completions，Anthropic /v1/messages 直通留待后续。
+	// Kimi OAuth 上游只在本服务暴露 OpenAI 兼容 /chat/completions。
 	if account != nil && account.Platform == PlatformKimi {
-		writeAnthropicError(c, http.StatusBadRequest, "invalid_request_error", "Kimi accounts only support /v1/chat/completions")
-		return nil, fmt.Errorf("kimi platform does not support /v1/messages")
+		writeAnthropicError(c, http.StatusBadRequest, "invalid_request_error", "Kimi OAuth accounts only support /v1/chat/completions")
+		return nil, fmt.Errorf("kimi oauth platform does not support /v1/messages")
 	}
 
 	// 1. Parse Anthropic request

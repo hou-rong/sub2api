@@ -41,8 +41,8 @@ type kimiUsageResponse struct {
 }
 
 func (s *AccountUsageService) getKimiUsage(ctx context.Context, account *Account, force bool) (*UsageInfo, error) {
-	if account == nil || !account.IsKimiOAuth() {
-		return nil, fmt.Errorf("account is not a Kimi OAuth account")
+	if account == nil || (!account.IsKimiOAuth() && !account.IsKimiAPIKey()) {
+		return nil, fmt.Errorf("account is not a supported Kimi account")
 	}
 	if s.cache == nil {
 		return s.fetchKimiUsage(ctx, account)
@@ -125,7 +125,11 @@ func (s *AccountUsageService) fetchKimiUsage(ctx context.Context, account *Accou
 	req = req.WithContext(WithHTTPUpstreamProfile(req.Context(), HTTPUpstreamProfileOpenAI))
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Authorization", "Bearer "+accessToken)
-	kimi.SetFingerprintHeaders(req.Header, account.GetKimiDeviceID())
+	if account.IsKimiOAuth() {
+		kimi.SetFingerprintHeaders(req.Header, account.GetKimiDeviceID())
+	} else {
+		req.Header.Set("User-Agent", "sub2api-usage-probe/1.0")
+	}
 	account.ApplyHeaderOverrides(req.Header)
 
 	proxyURL := ""

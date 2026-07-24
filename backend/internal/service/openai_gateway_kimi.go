@@ -19,7 +19,8 @@ import (
 //
 // 对标 grok 的接入方式，差异点：
 //   - 上游只支持 /chat/completions（无 /responses 端点），不做 CC↔Responses 协议转换；
-//   - 强制携带 8 个指纹头（UA 前缀必须 KimiCLI/，X-Msh-* 系列），缺失会被 403/429；
+//   - OAuth 使用官方设备登录签发的 token，必须携带 KimiCLI 指纹头；
+//   - API Key 保留入站客户端 User-Agent，避免伪装客户端身份；
 //   - X-Msh-Device-Id 使用账号 credentials 中持久化的稳定 device_id（绑进签发的 token）。
 //
 // 错误冷却语义对标 grok：401→临时停调度 10min、403→30min、429→Retry-After、5xx→2min。
@@ -32,8 +33,8 @@ func (s *OpenAIGatewayService) forwardKimiChatCompletions(
 ) (*OpenAIForwardResult, error) {
 	startTime := time.Now()
 
-	if account.Type != AccountTypeOAuth {
-		return nil, fmt.Errorf("kimi account type %s is not supported by subscription forwarding", account.Type)
+	if account.Type != AccountTypeOAuth && account.Type != AccountTypeAPIKey {
+		return nil, fmt.Errorf("kimi account type %s is not supported", account.Type)
 	}
 
 	// 1. 解析路由/计费所需的最小字段
@@ -75,7 +76,7 @@ func (s *OpenAIGatewayService) forwardKimiChatCompletions(
 		return nil, err
 	}
 
-	// 5. 构造上游请求（含 8 个强制指纹头）
+	// 5. 构造上游请求（OAuth 指纹 / API Key 真实客户端身份）
 	targetURL, err := kimi.BuildChatCompletionsURL(account.GetKimiBaseURL())
 	if err != nil {
 		return nil, fmt.Errorf("invalid kimi base_url: %w", err)
@@ -95,15 +96,20 @@ func (s *OpenAIGatewayService) forwardKimiChatCompletions(
 	} else {
 		upstreamReq.Header.Set("Accept", "application/json")
 	}
-	deviceID := account.GetKimiDeviceID()
-	if strings.TrimSpace(deviceID) == "" {
-		// device_id 正常由建号流程写入 credentials；缺失时生成临时值兜底
-		// （临时值未绑进 token，仅保证指纹头完整，后续刷新会回写稳定值）。
-		if generated, genErr := kimi.GenerateDeviceID(); genErr == nil {
-			deviceID = generated
+	if account.Type == AccountTypeOAuth {
+		deviceID := account.GetKimiDeviceID()
+		if strings.TrimSpace(deviceID) == "" {
+			// device_id 正常由建号流程写入 credentials；缺失时生成临时值兜底
+			// （临时值未绑进 token，仅保证指纹头完整，后续刷新会回写稳定值）。
+			if generated, genErr := kimi.GenerateDeviceID(); genErr == nil {
+				deviceID = generated
+			}
 		}
+		kimi.SetFingerprintHeaders(upstreamReq.Header, deviceID)
+	} else if userAgent := strings.TrimSpace(c.GetHeader("User-Agent")); userAgent != "" {
+		upstreamReq.Header.Set("User-Agent", userAgent)
 	}
-	kimi.SetFingerprintHeaders(upstreamReq.Header, deviceID)
+	account.ApplyHeaderOverrides(upstreamReq.Header)
 
 	// 6. 发送请求
 	proxyURL := ""
@@ -162,7 +168,11 @@ func (s *OpenAIGatewayService) handleKimiAccountUpstreamError(ctx context.Contex
 	}
 	switch statusCode {
 	case http.StatusUnauthorized:
-		s.tempUnscheduleKimi(ctx, account, 10*time.Minute, "kimi oauth token unauthorized")
+		reason := "kimi oauth token unauthorized"
+		if account.IsKimiAPIKey() {
+			reason = "kimi api key unauthorized"
+		}
+		s.tempUnscheduleKimi(ctx, account, 10*time.Minute, reason)
 	case http.StatusForbidden:
 		s.tempUnscheduleKimi(ctx, account, 30*time.Minute, "kimi fingerprint or subscription denied")
 	case http.StatusTooManyRequests:

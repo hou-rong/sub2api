@@ -15,6 +15,7 @@ import (
 	"time"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/kimi"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 )
@@ -341,6 +342,31 @@ func normalizeAccountConcurrency(platform, accountType string, concurrency int) 
 	return concurrency
 }
 
+func normalizeKimiAPIKeyCredentials(platform, accountType string, credentials map[string]any) error {
+	if platform != PlatformKimi || accountType != AccountTypeAPIKey {
+		return nil
+	}
+	if credentials == nil {
+		return infraerrors.BadRequest("KIMI_API_KEY_REQUIRED", "Kimi API Key credentials are required")
+	}
+	apiKey, _ := credentials["api_key"].(string)
+	if strings.TrimSpace(apiKey) == "" {
+		return infraerrors.BadRequest("KIMI_API_KEY_REQUIRED", "Kimi API Key is required")
+	}
+	credentials["api_key"] = strings.TrimSpace(apiKey)
+
+	baseURL, _ := credentials["base_url"].(string)
+	if strings.TrimSpace(baseURL) == "" {
+		baseURL = kimi.DefaultBaseURL
+	}
+	normalizedBaseURL, err := kimi.ValidateBaseURL(baseURL)
+	if err != nil {
+		return infraerrors.BadRequest("KIMI_BASE_URL_INVALID", "Kimi API Key Base URL must be the official Kimi Code OpenAI-compatible endpoint")
+	}
+	credentials["base_url"] = normalizedBaseURL
+	return nil
+}
+
 // ValidateOpenAILongContextBillingExtra validates the OpenAI account billing flag when present.
 func ValidateOpenAILongContextBillingExtra(platform string, extra map[string]any) error {
 	if platform != PlatformOpenAI {
@@ -459,6 +485,9 @@ func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]an
 }
 
 func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccountInput) (*Account, error) {
+	if err := normalizeKimiAPIKeyCredentials(input.Platform, input.Type, input.Credentials); err != nil {
+		return nil, err
+	}
 	accountExtra, err := normalizeOpenAILongContextBillingExtra(input.Platform, input.Extra)
 	if err != nil {
 		return nil, err
@@ -609,6 +638,9 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 		}
 		// Strip SSO/password residue that must never sit next to OAuth tokens.
 		account.Credentials = SanitizeStoredCredentials(account.Platform, account.Credentials)
+	}
+	if err := normalizeKimiAPIKeyCredentials(account.Platform, account.Type, account.Credentials); err != nil {
+		return nil, err
 	}
 	// Extra 使用 map：需要区分“未提供(nil)”与“显式清空({})”。
 	// 关闭配额限制时前端会删除 quota_* 键并提交 extra:{}，此时也必须落库。

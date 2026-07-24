@@ -109,14 +109,18 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	}
 
 	if account.Platform == PlatformKimi {
-		// Kimi 上游仅提供 OpenAI 兼容 /chat/completions，不支持 /responses 端点。
+		// Kimi Code API Key 可通过通用 Responses ↔ Chat Completions 桥接供
+		// Codex 使用；OAuth token 仍只支持原生 /chat/completions。
+		if account.IsKimiAPIKey() {
+			return s.forwardResponsesViaRawChatCompletions(ctx, c, account, body)
+		}
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": gin.H{
 				"type":    "invalid_request_error",
-				"message": "Kimi accounts only support /v1/chat/completions",
+				"message": "Kimi OAuth accounts only support /v1/chat/completions; use a Kimi API Key account for /v1/responses",
 			},
 		})
-		return nil, errors.New("kimi platform does not support /v1/responses")
+		return nil, errors.New("kimi oauth platform does not support /v1/responses")
 	}
 
 	if account.Type == AccountTypeAPIKey && !openai_compat.ShouldUseResponsesAPI(account.Extra) {

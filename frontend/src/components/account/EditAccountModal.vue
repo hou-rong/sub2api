@@ -43,7 +43,9 @@
                     ? 'https://cloudcode-pa.googleapis.com'
                     : account.platform === 'grok'
                       ? 'https://api.x.ai/v1'
-                      : 'https://api.anthropic.com'
+                      : account.platform === 'kimi'
+                        ? 'https://api.kimi.com/coding/v1'
+                        : 'https://api.anthropic.com'
             "
           />
           <p v-if="baseUrlHint" class="input-hint">{{ baseUrlHint }}</p>
@@ -72,7 +74,9 @@
                     ? 'sk-...'
                     : account.platform === 'grok'
                       ? 'xai-...'
-                      : 'sk-ant-...'
+                      : account.platform === 'kimi'
+                        ? 'sk-...'
+                        : 'sk-ant-...'
             "
           />
           <p class="input-hint">{{ t('admin.accounts.leaveEmptyToKeep') }}</p>
@@ -2820,6 +2824,7 @@ const baseUrlHint = computed(() => {
   if (props.account.platform === 'openai') return t('admin.accounts.openai.baseUrlHint')
   if (props.account.platform === 'gemini') return t('admin.accounts.gemini.baseUrlHint')
   if (props.account.platform === 'grok') return ''
+  if (props.account.platform === 'kimi') return t('admin.accounts.kimi.baseUrlHint')
   return t('admin.accounts.baseUrlHint')
 })
 
@@ -3658,7 +3663,9 @@ const syncFormFromAccount = (newAccount: Account | null) => {
           ? 'https://generativelanguage.googleapis.com'
           : newAccount.platform === 'grok'
             ? 'https://api.x.ai/v1'
-            : 'https://api.anthropic.com'
+            : newAccount.platform === 'kimi'
+              ? 'https://api.kimi.com/coding/v1'
+              : 'https://api.anthropic.com'
     editBaseUrl.value = (credentials.base_url as string) || platformDefaultUrl
 
     // Load model mappings and detect mode
@@ -3729,7 +3736,9 @@ const syncFormFromAccount = (newAccount: Account | null) => {
           ? 'https://generativelanguage.googleapis.com'
           : newAccount.platform === 'grok'
             ? 'https://api.x.ai/v1'
-            : 'https://api.anthropic.com'
+            : newAccount.platform === 'kimi'
+              ? 'https://api.kimi.com/coding/v1'
+              : 'https://api.anthropic.com'
     editBaseUrl.value = platformDefaultUrl
 
     // Load model mappings for OpenAI/Grok/Kimi OAuth accounts

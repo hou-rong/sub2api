@@ -112,13 +112,16 @@ async function selectButtonByText(wrapper: ReturnType<typeof mountModal>, text: 
 }
 
 async function submitApiKeyAccount(
-  platform: 'openai' | 'anthropic',
+  platform: 'openai' | 'anthropic' | 'kimi',
   enableLongContextBilling = false,
   disableUpstreamBillingProbe = false
 ) {
   const wrapper = mountModal()
-  await selectButtonByText(wrapper, platform === 'openai' ? 'OpenAI' : 'admin.accounts.claudeConsole')
-  if (platform === 'openai') {
+  await selectButtonByText(
+    wrapper,
+    platform === 'openai' ? 'OpenAI' : platform === 'kimi' ? 'Kimi' : 'admin.accounts.claudeConsole'
+  )
+  if (platform === 'openai' || platform === 'kimi') {
     await selectButtonByText(wrapper, 'API Key')
   }
   await wrapper.get('form#create-account-form input[type="text"]').setValue(`${platform} account`)
@@ -287,6 +290,22 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     expect(payload?.upstream_billing_probe_enabled).toBe(true)
     // 创建成功后前端立即发起一次首探（与其他 apikey 平台一致）。
     expect(probeUpstreamBillingMock).toHaveBeenCalledWith(42)
+  })
+
+  it('creates a Kimi API-key account with the official Kimi Code endpoint', async () => {
+    createAccountMock.mockResolvedValueOnce({ id: 43, platform: 'kimi', type: 'apikey' })
+
+    await submitApiKeyAccount('kimi')
+
+    expect(createAccountMock).toHaveBeenCalledTimes(1)
+    expect(createAccountMock.mock.calls[0]?.[0]).toMatchObject({
+      platform: 'kimi',
+      type: 'apikey',
+      credentials: {
+        api_key: 'test-api-key',
+        base_url: 'https://api.kimi.com/coding/v1',
+      },
+    })
   })
 
   it('leaves Codex session import billing ownership to the backend', async () => {

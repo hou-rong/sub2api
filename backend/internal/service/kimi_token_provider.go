@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"strconv"
 	"strings"
@@ -57,8 +58,18 @@ func (p *KimiTokenProvider) GetAccessToken(ctx context.Context, account *Account
 	if account == nil {
 		return "", errors.New("account is nil")
 	}
-	if account.Platform != PlatformKimi || account.Type != AccountTypeOAuth {
-		return "", errors.New("not a kimi oauth account")
+	if account.Platform != PlatformKimi {
+		return "", errors.New("not a kimi account")
+	}
+	if account.Type == AccountTypeAPIKey {
+		apiKey := strings.TrimSpace(account.GetKimiAPIKey())
+		if apiKey == "" {
+			return "", errors.New("api_key not found in credentials")
+		}
+		return apiKey, nil
+	}
+	if account.Type != AccountTypeOAuth {
+		return "", fmt.Errorf("unsupported kimi account type: %s", account.Type)
 	}
 
 	cacheKey := KimiTokenCacheKey(account)

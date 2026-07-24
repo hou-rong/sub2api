@@ -115,6 +115,7 @@ export default {
         antigravityOauth: 'Antigravity OAuth',
         grokOauth: 'Grok OAuth',
         kimiOauth: 'Kimi OAuth',
+        kimiApiKey: 'Kimi Code console API Key',
         antigravityApikey: 'Connect via Base URL + API Key',
         upstream: 'Upstream',
         upstreamDesc: 'Connect via Base URL + API Key'
@@ -668,8 +669,8 @@ export default {
         noResponseBody: 'No response body from server'
       },
       kimi: {
-        baseUrlHint: 'Kimi OAuth accounts forward to the official Kimi Coding API base URL.',
-        apiKeyHint: 'Kimi subscription support uses OAuth device-flow login; API keys are out of scope for this account type.'
+        baseUrlHint: 'Use https://api.kimi.com/coding/v1 for a Kimi Code membership API Key; Kimi Platform keys are not interchangeable.',
+        apiKeyHint: 'Enter an API Key created in the Kimi Code Console. It is shown only once when created.'
       },
       anthropic: {
         apiKeyPassthrough: 'Auto passthrough (auth only)',
@@ -1141,7 +1142,8 @@ export default {
           denied: 'Authorization was denied. Please restart to try again.',
           failedToStart: 'Failed to start Kimi device authorization',
           pollFailed: 'Failed to poll Kimi device authorization status',
-          oauthOnlyHint: 'Kimi subscription accounts use OAuth device-flow login (OpenAI-compatible forwarding) only.'
+          oauthOnlyHint: 'Kimi subscription accounts support OAuth device-flow login.',
+          authMethodsHint: 'Bind a Kimi account with OAuth device flow, or enter an API Key created in the Kimi Code Console.'
         },
         // Gemini specific
 	        gemini: {

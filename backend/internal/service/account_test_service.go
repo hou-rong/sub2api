@@ -312,15 +312,11 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 	return s.testClaudeAccountConnection(c, account, modelID)
 }
 
-// testKimiAccountConnection tests a Kimi (kimi.com) OAuth account via its
+// testKimiAccountConnection tests a Kimi (kimi.com) OAuth or API-key account via its
 // OpenAI-compatible /chat/completions endpoint. Mirrors forwardKimiChatCompletions'
 // auth/header handling so the test path matches real gateway traffic.
 func (s *AccountTestService) testKimiAccountConnection(c *gin.Context, account *Account, modelID string, prompt string) error {
 	ctx := c.Request.Context()
-
-	if s.kimiTokenProvider == nil {
-		return s.sendErrorAndEnd(c, "Kimi token provider not configured")
-	}
 
 	testModelID := strings.TrimSpace(modelID)
 	if testModelID == "" {
@@ -330,9 +326,24 @@ func (s *AccountTestService) testKimiAccountConnection(c *gin.Context, account *
 		testModelID = mapped
 	}
 
-	authToken, err := s.kimiTokenProvider.GetAccessToken(ctx, account)
-	if err != nil {
-		return s.sendErrorAndEnd(c, fmt.Sprintf("Failed to get Kimi access token: %s", err.Error()))
+	var authToken string
+	switch account.Type {
+	case AccountTypeOAuth:
+		if s.kimiTokenProvider == nil {
+			return s.sendErrorAndEnd(c, "Kimi token provider not configured")
+		}
+		var err error
+		authToken, err = s.kimiTokenProvider.GetAccessToken(ctx, account)
+		if err != nil {
+			return s.sendErrorAndEnd(c, fmt.Sprintf("Failed to get Kimi access token: %s", err.Error()))
+		}
+	case AccountTypeAPIKey:
+		authToken = strings.TrimSpace(account.GetKimiAPIKey())
+		if authToken == "" {
+			return s.sendErrorAndEnd(c, "Kimi API key is missing")
+		}
+	default:
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Unsupported Kimi account type: %s", account.Type))
 	}
 
 	apiURL, err := kimi.BuildChatCompletionsURL(account.GetKimiBaseURL())
@@ -360,13 +371,17 @@ func (s *AccountTestService) testKimiAccountConnection(c *gin.Context, account *
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "text/event-stream")
 	req.Header.Set("Authorization", "Bearer "+authToken)
-	deviceID := account.GetKimiDeviceID()
-	if strings.TrimSpace(deviceID) == "" {
-		if generated, genErr := kimi.GenerateDeviceID(); genErr == nil {
-			deviceID = generated
+	if account.Type == AccountTypeOAuth {
+		deviceID := account.GetKimiDeviceID()
+		if strings.TrimSpace(deviceID) == "" {
+			if generated, genErr := kimi.GenerateDeviceID(); genErr == nil {
+				deviceID = generated
+			}
 		}
+		kimi.SetFingerprintHeaders(req.Header, deviceID)
+	} else {
+		req.Header.Set("User-Agent", "sub2api-account-test/1.0")
 	}
-	kimi.SetFingerprintHeaders(req.Header, deviceID)
 	account.ApplyHeaderOverrides(req.Header)
 
 	proxyURL := ""

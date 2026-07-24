@@ -222,6 +222,20 @@ func TestBuildUpstreamModelsRequestsForAPIKeyAccounts(t *testing.T) {
 	require.Equal(t, "https://xai.example.com/v1/models", grokReq.URL.String())
 	require.Equal(t, "Bearer xai-key", grokReq.Header.Get("Authorization"))
 
+	kimiReq, err := svc.buildUpstreamModelsRequest(ctx, &Account{
+		Platform: PlatformKimi,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"api_key":  "kimi-key",
+			"base_url": "https://api.kimi.com/coding/v1",
+		},
+	})
+	require.NoError(t, err)
+	require.Equal(t, "https://api.kimi.com/coding/v1/models", kimiReq.URL.String())
+	require.Equal(t, "Bearer kimi-key", kimiReq.Header.Get("Authorization"))
+	require.Equal(t, "sub2api-model-probe/1.0", kimiReq.Header.Get("User-Agent"))
+	require.Empty(t, kimiReq.Header.Get("X-Msh-Platform"))
+
 	geminiReq, err := svc.buildGeminiUpstreamModelsRequest(ctx, &Account{
 		Platform: PlatformGemini,
 		Type:     AccountTypeAPIKey,

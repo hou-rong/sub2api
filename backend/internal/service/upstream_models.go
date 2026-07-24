@@ -12,6 +12,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/kimi"
 )
 
 const upstreamModelsBodyLimit int64 = 8 << 20
@@ -135,6 +136,8 @@ func (s *AccountTestService) buildUpstreamModelsRequest(ctx context.Context, acc
 	switch {
 	case account.Platform == PlatformAntigravity:
 		return s.buildAntigravityAPIKeyModelsRequest(ctx, account)
+	case account.IsKimi():
+		return s.buildKimiUpstreamModelsRequest(ctx, account)
 	case account.IsGrok():
 		return s.buildGrokUpstreamModelsRequest(ctx, account)
 	case account.IsOpenAI():
@@ -148,6 +151,55 @@ func (s *AccountTestService) buildUpstreamModelsRequest(ctx context.Context, acc
 			fmt.Sprintf("Unsupported platform for upstream model sync: %s", account.Platform), nil,
 		)
 	}
+}
+
+func (s *AccountTestService) buildKimiUpstreamModelsRequest(ctx context.Context, account *Account) (*http.Request, error) {
+	if account == nil {
+		return nil, newUpstreamModelSyncConfigError("Account is required", nil)
+	}
+
+	var authToken string
+	switch account.Type {
+	case AccountTypeAPIKey:
+		authToken = strings.TrimSpace(account.GetKimiAPIKey())
+		if authToken == "" {
+			return nil, newUpstreamModelSyncConfigError("No Kimi API key is available", nil)
+		}
+	case AccountTypeOAuth:
+		if s.kimiTokenProvider == nil {
+			return nil, newUpstreamModelSyncConfigError("Kimi token provider is not configured", nil)
+		}
+		accessToken, err := s.kimiTokenProvider.GetAccessToken(ctx, account)
+		if err != nil {
+			return nil, newUpstreamModelSyncUpstreamError("Failed to get Kimi access token", err)
+		}
+		authToken = strings.TrimSpace(accessToken)
+		if authToken == "" {
+			return nil, newUpstreamModelSyncConfigError("No Kimi access token is available", nil)
+		}
+	default:
+		return nil, newUpstreamModelSyncUnsupportedError(
+			fmt.Sprintf("Unsupported Kimi account type for upstream model sync: %s", account.Type), nil,
+		)
+	}
+
+	modelsURL, err := kimi.BuildModelsURL(account.GetKimiBaseURL())
+	if err != nil {
+		return nil, newUpstreamModelSyncConfigError("Invalid Kimi base URL", err)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, modelsURL, nil)
+	if err != nil {
+		return nil, newUpstreamModelSyncConfigError("Invalid Kimi model list URL", err)
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Authorization", "Bearer "+authToken)
+	if account.IsKimiOAuth() {
+		kimi.SetFingerprintHeaders(req.Header, account.GetKimiDeviceID())
+	} else {
+		req.Header.Set("User-Agent", "sub2api-model-probe/1.0")
+	}
+	account.ApplyHeaderOverrides(req.Header)
+	return req, nil
 }
 
 func (s *AccountTestService) buildGrokUpstreamModelsRequest(ctx context.Context, account *Account) (*http.Request, error) {

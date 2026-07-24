@@ -280,6 +280,10 @@ func (a *Account) IsKimiOAuth() bool {
 	return a.IsKimi() && a.Type == AccountTypeOAuth
 }
 
+func (a *Account) IsKimiAPIKey() bool {
+	return a.IsKimi() && a.Type == AccountTypeAPIKey
+}
+
 func (a *Account) IsOpenAICompatible() bool {
 	return a != nil && (a.Platform == PlatformOpenAI || a.Platform == PlatformGrok || a.Platform == PlatformKimi)
 }
@@ -1424,6 +1428,13 @@ func (a *Account) GetKimiAccessToken() string {
 		return ""
 	}
 	return a.GetCredential("access_token")
+}
+
+func (a *Account) GetKimiAPIKey() string {
+	if !a.IsKimiAPIKey() {
+		return ""
+	}
+	return a.GetCredential("api_key")
 }
 
 func (a *Account) GetKimiRefreshToken() string {

@@ -318,6 +318,7 @@ export default {
         antigravityOauth: 'Antigravity OAuth',
         grokOauth: 'Grok OAuth',
         kimiOauth: 'Kimi OAuth',
+        kimiApiKey: 'Kimi Code 控制台 API Key',
         antigravityApikey: '通过 Base URL + API Key 连接',
         upstream: '对接上游',
         upstreamDesc: '通过 Base URL + API Key 连接上游'
@@ -737,8 +738,8 @@ export default {
         noResponseBody: '服务器未返回响应体'
       },
       kimi: {
-        baseUrlHint: 'Kimi OAuth 账号会转发到官方 Kimi Coding API Base URL。',
-        apiKeyHint: 'Kimi 订阅支持使用 OAuth 设备码登录；API Key 账号不在本次范围内。'
+        baseUrlHint: 'Kimi Code 会员 API Key 请使用 https://api.kimi.com/coding/v1；它与 Kimi 开放平台 Key 不通用。',
+        apiKeyHint: '请填写在 Kimi Code 控制台生成的 API Key，密钥只会在创建时显示一次。'
       },
       anthropic: {
         apiKeyPassthrough: '自动透传（仅替换认证）',
@@ -1198,7 +1199,8 @@ export default {
           denied: '授权已被拒绝，请重新发起后重试。',
           failedToStart: '发起 Kimi 设备授权失败',
           pollFailed: '轮询 Kimi 设备授权状态失败',
-          oauthOnlyHint: 'Kimi 订阅账号仅支持 OAuth 设备码登录（OpenAI 兼容转发）。'
+          oauthOnlyHint: 'Kimi 订阅账号支持 OAuth 设备码登录。',
+          authMethodsHint: '可使用 OAuth 设备码绑定账号，或直接填写 Kimi Code 控制台生成的 API Key。'
         },
         // Gemini specific
         gemini: {

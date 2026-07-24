@@ -402,7 +402,7 @@ func (s *AccountUsageService) getUsageForAccount(ctx context.Context, account *A
 		return usage, err
 	}
 
-	if account.Platform == PlatformKimi && account.Type == AccountTypeOAuth {
+	if account.Platform == PlatformKimi && (account.Type == AccountTypeOAuth || account.Type == AccountTypeAPIKey) {
 		usage, err := s.getKimiUsage(ctx, account, forceProbe)
 		if err == nil {
 			s.tryClearRecoverableAccountError(ctx, account)

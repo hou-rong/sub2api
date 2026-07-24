@@ -188,6 +188,22 @@ func TestKimiTokenProviderReturnsCachedTokenWithoutRefresh(t *testing.T) {
 	require.Equal(t, 0, repo.updateCredentialsCalls)
 }
 
+func TestKimiTokenProviderReturnsAPIKeyWithoutOAuthRefresh(t *testing.T) {
+	account := &Account{
+		ID:       60,
+		Platform: PlatformKimi,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"api_key": "  kimi-api-key  ",
+		},
+	}
+	provider := NewKimiTokenProvider(nil, nil)
+
+	token, err := provider.GetAccessToken(context.Background(), account)
+	require.NoError(t, err)
+	require.Equal(t, "kimi-api-key", token)
+}
+
 func TestKimiTokenCacheKeyUsesAccountID(t *testing.T) {
 	require.Equal(t, "kimi:account:42", KimiTokenCacheKey(&Account{ID: 42}))
 	require.Equal(t, "kimi:account:0", KimiTokenCacheKey(nil))
