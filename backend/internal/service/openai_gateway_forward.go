@@ -98,6 +98,10 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			return nil, err
 		}
 	}
+	body, err = applyOpenAIAccountFastModeToBody(account, body)
+	if err != nil {
+		return nil, err
+	}
 
 	originalBody := body
 	requestView := newOpenAIRequestView(body)

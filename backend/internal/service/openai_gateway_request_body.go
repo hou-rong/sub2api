@@ -1023,6 +1023,11 @@ func (s *OpenAIGatewayService) applyOpenAIFastPolicyToBody(ctx context.Context, 
 	if len(body) == 0 {
 		return body, nil
 	}
+	var err error
+	body, err = applyOpenAIAccountFastModeToBody(account, body)
+	if err != nil {
+		return body, err
+	}
 	rawTier := gjson.GetBytes(body, "service_tier").String()
 	if rawTier == "" {
 		return body, nil
@@ -1062,6 +1067,35 @@ func (s *OpenAIGatewayService) applyOpenAIFastPolicyToBody(ctx context.Context, 
 		}
 		return updated, nil
 	}
+}
+
+// applyOpenAIAccountFastModeToBody makes the selected ChatGPT account the
+// source of truth for fast mode. Enabled accounts always request priority;
+// disabled accounts strip only priority/fast while preserving flex and other
+// recognized tiers for the global policy to handle.
+func applyOpenAIAccountFastModeToBody(account *Account, body []byte) ([]byte, error) {
+	if len(body) == 0 || account == nil || !account.SupportsOpenAIFastModeControl() {
+		return body, nil
+	}
+	rawTier := gjson.GetBytes(body, "service_tier").String()
+	if account.IsOpenAIFastModeEnabled() {
+		if normalizedOpenAIServiceTierValue(rawTier) == OpenAIFastTierPriority {
+			return body, nil
+		}
+		updated, err := sjson.SetBytes(body, "service_tier", OpenAIFastTierPriority)
+		if err != nil {
+			return body, fmt.Errorf("enable account fast mode: %w", err)
+		}
+		return updated, nil
+	}
+	if normalizedOpenAIServiceTierValue(rawTier) != OpenAIFastTierPriority {
+		return body, nil
+	}
+	updated, err := sjson.DeleteBytes(body, "service_tier")
+	if err != nil {
+		return body, fmt.Errorf("disable account fast mode: %w", err)
+	}
+	return updated, nil
 }
 
 // writeOpenAIFastPolicyBlockedResponse writes a 403 JSON response for a
@@ -1133,6 +1167,11 @@ func (s *OpenAIGatewayService) applyOpenAIFastPolicyToWSResponseCreate(
 	// upstream reject it rather than guessing at our layer.
 	if frameType != "response.create" {
 		return frame, nil, nil
+	}
+	var err error
+	frame, err = applyOpenAIAccountFastModeToBody(account, frame)
+	if err != nil {
+		return frame, nil, err
 	}
 	rawTier := gjson.GetBytes(frame, "service_tier").String()
 	if rawTier == "" {

@@ -88,6 +88,10 @@ type OpenAIEndpointCapability string
 
 const openAILongContextBillingEnabledKey = "openai_long_context_billing_enabled"
 
+// OpenAIFastModeEnabledExtraKey controls whether a ChatGPT subscription
+// account sends requests with OpenAI's priority service tier.
+const OpenAIFastModeEnabledExtraKey = "openai_fast_mode_enabled"
+
 const (
 	OpenAIEndpointCapabilityChatCompletions OpenAIEndpointCapability = "chat_completions"
 	OpenAIEndpointCapabilityEmbeddings      OpenAIEndpointCapability = "embeddings"
@@ -1268,6 +1272,24 @@ func (a *Account) IsOpenAILongContextBillingEnabled() bool {
 		return false
 	}
 	enabled, ok := a.Extra[openAILongContextBillingEnabledKey].(bool)
+	return ok && enabled
+}
+
+// SupportsOpenAIFastModeControl reports whether this account is backed by the
+// ChatGPT OAuth transport. API key accounts continue to follow the client's
+// service_tier and the global fast/flex policy.
+func (a *Account) SupportsOpenAIFastModeControl() bool {
+	return a != nil && a.IsOpenAI() && a.IsOAuth()
+}
+
+// IsOpenAIFastModeEnabled returns the explicit account-level fast mode.
+// Missing or malformed values are treated as disabled so upgrading does not
+// unexpectedly opt existing subscription accounts into priority billing.
+func (a *Account) IsOpenAIFastModeEnabled() bool {
+	if !a.SupportsOpenAIFastModeControl() || a.Extra == nil {
+		return false
+	}
+	enabled, ok := a.Extra[OpenAIFastModeEnabledExtraKey].(bool)
 	return ok && enabled
 }
 

@@ -281,6 +281,15 @@
                 <span :class="['h-1.5 w-1.5 rounded-full', getOpenAICompactMeta(row)?.dotClass]" />
                 <span>{{ getOpenAICompactMeta(row)?.label }}</span>
               </div>
+              <div
+                v-if="isOpenAIFastModeEnabled(row)"
+                class="inline-flex items-center gap-1.5 pl-0.5 text-[11px] font-semibold leading-4 text-cyan-600 dark:text-cyan-300"
+                :title="t('admin.accounts.openai.fastModeEnabledHint')"
+                data-testid="openai-fast-mode-badge"
+              >
+                <span class="h-1.5 w-1.5 rounded-full bg-cyan-500 shadow-[0_0_0_2px_rgba(6,182,212,0.14)]" />
+                <span>{{ t('admin.accounts.openai.fastModeBadge') }}</span>
+              </div>
             </div>
           </template>
           <template #cell-capacity="{ row }">
@@ -1617,6 +1626,14 @@ function getOpenAIAuthMode(row: any): string | undefined {
   if (!row || row.platform !== 'openai' || row.type !== 'oauth') return undefined
   const authMode = row.credentials?.auth_mode
   return typeof authMode === 'string' && authMode.trim() ? authMode : undefined
+}
+
+function isOpenAIFastModeEnabled(row: any): boolean {
+  return (
+    row?.platform === 'openai' &&
+    (row?.type === 'oauth' || row?.type === 'setup-token') &&
+    row?.extra?.openai_fast_mode_enabled === true
+  )
 }
 
 // Antigravity 订阅等级辅助函数

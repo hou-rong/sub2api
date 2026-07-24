@@ -494,6 +494,27 @@ describe('EditAccountModal', () => {
     )
   })
 
+  it('loads and submits the per-account OpenAI fast mode toggle', async () => {
+    const account = buildOpenAISetupTokenAccount()
+    account.extra = {
+      openai_fast_mode_enabled: true
+    }
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+    const toggle = wrapper.get('[data-testid="openai-fast-mode-toggle"]')
+    expect(toggle.classes()).toContain('bg-cyan-500')
+
+    await toggle.trigger('click')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.openai_fast_mode_enabled).toBe(false)
+  })
+
   it('defaults legacy OpenAI accounts to long-context billing disabled', async () => {
     const account = buildAccount()
     updateAccountMock.mockReset()

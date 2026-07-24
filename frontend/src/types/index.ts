@@ -1131,6 +1131,7 @@ export interface Account {
       available_count?: number
       credits?: { expires_at?: string }[]
     }
+    openai_fast_mode_enabled?: boolean
   } & Record<string, unknown>)
   proxy_id: number | null
   proxy_fallback_origin_id?: number | null

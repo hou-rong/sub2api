@@ -544,6 +544,25 @@ describe('BulkEditAccountModal', () => {
     })
   })
 
+  it('ChatGPT 账号批量编辑可开启 Fast 模式', async () => {
+    const wrapper = mountModal({
+      selectedPlatforms: ['openai'],
+      selectedTypes: ['oauth']
+    })
+
+    await wrapper.get('#bulk-edit-openai-fast-mode-enabled').setValue(true)
+    await wrapper.get('[data-testid="bulk-edit-openai-fast-mode-toggle"]').trigger('click')
+    await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledTimes(1)
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith([1, 2], {
+      extra: {
+        openai_fast_mode_enabled: true
+      }
+    })
+  })
+
   it('开启 OpenAI 自动透传时不再同时提交模型限制', async () => {
     const wrapper = mountModal({
       selectedPlatforms: ['openai'],

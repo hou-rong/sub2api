@@ -96,6 +96,23 @@
           </span>
         </template>
 
+        <template #cell-service_tier="{ row }">
+          <span
+            v-if="normalizeUsageServiceTier(row.service_tier) === 'priority'"
+            data-testid="usage-fast-marker"
+            class="inline-flex items-center rounded bg-cyan-100 px-2 py-0.5 text-xs font-semibold text-cyan-700 ring-1 ring-inset ring-cyan-200 dark:bg-cyan-500/20 dark:text-cyan-300 dark:ring-cyan-500/30"
+          >
+            {{ t('usage.serviceTierPriority') }}
+          </span>
+          <span
+            v-else-if="row.service_tier"
+            class="inline-flex items-center rounded bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600 dark:bg-dark-600 dark:text-gray-300"
+          >
+            {{ getUsageServiceTierLabel(row.service_tier, t) }}
+          </span>
+          <span v-else class="text-sm text-gray-400 dark:text-gray-500">-</span>
+        </template>
+
         <template #cell-endpoint="{ row }">
           <div class="max-w-[320px] space-y-1 text-xs">
             <div class="break-all text-gray-700 dark:text-gray-300">
@@ -503,7 +520,7 @@ import { useAppStore } from '@/stores/app'
 import { formatDateTime, formatReasoningEffort } from '@/utils/format'
 import { formatCacheTokens, formatMultiplier } from '@/utils/formatters'
 import { formatTokenPricePerMillion } from '@/utils/usagePricing'
-import { getUsageServiceTierLabel } from '@/utils/usageServiceTier'
+import { getUsageServiceTierLabel, normalizeUsageServiceTier } from '@/utils/usageServiceTier'
 import { resolveUsageRequestType } from '@/utils/usageRequestType'
 import {
   LATENCY_BAR_CLASSES,

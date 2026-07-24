@@ -518,6 +518,13 @@ export default {
         flattenNamespaces: 'Flatten Codex namespace tools (compatibility)',
         flattenNamespacesDesc:
           'Disabled by default: Codex namespace tool declarations are forwarded as-is on /responses, which is what the ChatGPT Codex backend expects. Enable only when this OAuth account is routed to a relay that rejects namespace tools — flattening renames them to namespace__tool, which breaks models that address collaboration tools as functions.<namespace>.<tool>. Compaction requests always flatten regardless of this switch.',
+        fastMode: 'Fast mode',
+        fastModeDesc:
+          'Applies to this ChatGPT OAuth / Setup Token account. When enabled, requests are forced to service_tier=priority; when disabled, client-requested Fast tiers are removed.',
+        fastModeBulkDesc:
+          'Bulk configure Fast mode for the selected ChatGPT accounts. Enable to force priority; disable to use standard mode.',
+        fastModeBadge: 'Fast',
+        fastModeEnabledHint: 'Fast (priority) mode is enabled for this ChatGPT account',
         longContextBilling: 'API long-context pricing',
         longContextBillingDesc:
           'Disabled by default. Enable only when this account\'s upstream charges OpenAI API long-context rates above the model threshold.',
