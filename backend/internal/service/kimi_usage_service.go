@@ -101,7 +101,7 @@ func (s *AccountUsageService) getKimiUsage(ctx context.Context, account *Account
 
 func (s *AccountUsageService) fetchKimiUsage(ctx context.Context, account *Account) (*UsageInfo, error) {
 	if s.kimiTokenProvider == nil {
-		return nil, fmt.Errorf("Kimi token provider is not configured")
+		return nil, fmt.Errorf("kimi token provider is not configured")
 	}
 	if s.httpUpstream == nil {
 		return nil, fmt.Errorf("HTTP upstream is not configured")
@@ -147,7 +147,7 @@ func (s *AccountUsageService) fetchKimiUsage(ctx context.Context, account *Accou
 		return nil, fmt.Errorf("read Kimi usage response: %w", err)
 	}
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		return nil, fmt.Errorf("Kimi usages API returned status %d", resp.StatusCode)
+		return nil, fmt.Errorf("kimi usages API returned status %d", resp.StatusCode)
 	}
 
 	var payload kimiUsageResponse
@@ -156,7 +156,7 @@ func (s *AccountUsageService) fetchKimiUsage(ctx context.Context, account *Accou
 	}
 	usage := buildKimiUsageInfo(&payload, time.Now())
 	if usage.FiveHour == nil && usage.SevenDay == nil {
-		return nil, fmt.Errorf("Kimi usages API returned no recognizable usage windows")
+		return nil, fmt.Errorf("kimi usages API returned no recognizable usage windows")
 	}
 	s.persistKimiMembership(account, usage)
 	return usage, nil
