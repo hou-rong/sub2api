@@ -106,3 +106,63 @@ func TestShouldSendOpsAlertWeComByMinSeverity(t *testing.T) {
 		t.Fatal("empty threshold should allow all severities")
 	}
 }
+
+func TestBuildOpsAlertWeComMarkdownUsesSiteNameAndStatusEmoji(t *testing.T) {
+	tests := []struct {
+		name     string
+		siteName string
+		status   string
+		want     string
+	}{
+		{
+			name:     "triggered alert uses configured site name",
+			siteName: "知枢token供应商",
+			status:   OpsAlertStatusFiring,
+			want:     "## 🔥知枢token供应商运维预警触发\n",
+		},
+		{
+			name:     "resolved alert uses configured site name",
+			siteName: "知枢token供应商",
+			status:   OpsAlertStatusResolved,
+			want:     "## ✅知枢token供应商运维预警恢复\n",
+		},
+		{
+			name:     "empty site name falls back to Sub2API",
+			siteName: "  ",
+			status:   OpsAlertStatusManualResolved,
+			want:     "## ✅Sub2API运维预警恢复\n",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			content := buildOpsAlertWeComMarkdown(tt.siteName, &OpsAlertRule{
+				Name:     "可用账号不足",
+				Severity: "P1",
+			}, &OpsAlertEvent{
+				Status:      tt.status,
+				Description: "当前无可用账号",
+			})
+			if !strings.HasPrefix(content, tt.want) {
+				t.Fatalf("unexpected title: %q", content)
+			}
+		})
+	}
+}
+
+func TestOpsAlertSiteNameUsesSettingWithFallback(t *testing.T) {
+	repo := newRuntimeSettingRepoStub()
+	svc := &OpsAlertEvaluatorService{opsService: &OpsService{settingRepo: repo}}
+
+	if got := svc.opsAlertSiteName(context.Background()); got != defaultOpsAlertSiteName {
+		t.Fatalf("missing site name = %q, want %q", got, defaultOpsAlertSiteName)
+	}
+	repo.values[SettingKeySiteName] = "  知枢token供应商  "
+	if got := svc.opsAlertSiteName(context.Background()); got != "知枢token供应商" {
+		t.Fatalf("configured site name = %q", got)
+	}
+	repo.values[SettingKeySiteName] = "  "
+	if got := svc.opsAlertSiteName(context.Background()); got != defaultOpsAlertSiteName {
+		t.Fatalf("blank site name = %q, want %q", got, defaultOpsAlertSiteName)
+	}
+}

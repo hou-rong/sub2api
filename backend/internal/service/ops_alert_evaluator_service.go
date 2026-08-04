@@ -17,6 +17,7 @@ import (
 
 const (
 	opsAlertEvaluatorJobName = "ops_alert_evaluator"
+	defaultOpsAlertSiteName  = "Sub2API"
 
 	opsAlertEvaluatorTimeout         = 45 * time.Second
 	opsAlertEvaluatorLeaderLockKey   = "ops:alert:evaluator:leader"
@@ -786,7 +787,7 @@ func (s *OpsAlertEvaluatorService) maybeSendAlertWeCom(ctx context.Context, runt
 	if !s.weComLimiter.Allow(time.Now().UTC()) {
 		return false
 	}
-	if err := s.opsService.weComNotifier.SendMarkdown(ctx, cfg.WebhookURL, buildOpsAlertWeComMarkdown(rule, event)); err != nil {
+	if err := s.opsService.weComNotifier.SendMarkdown(ctx, cfg.WebhookURL, buildOpsAlertWeComMarkdown(s.opsAlertSiteName(ctx), rule, event)); err != nil {
 		logger.LegacyPrintf("service.ops_alert_evaluator", "[OpsAlertEvaluator] send WeCom notification failed (event=%d): %v", event.ID, err)
 		return false
 	}
@@ -811,10 +812,27 @@ func shouldSendOpsAlertWeComByMinSeverity(minSeverity, severity string) bool {
 	return minOK && severityOK && severityRank <= minRank
 }
 
-func buildOpsAlertWeComMarkdown(rule *OpsAlertRule, event *OpsAlertEvent) string {
+func (s *OpsAlertEvaluatorService) opsAlertSiteName(ctx context.Context) string {
+	if s == nil || s.opsService == nil || s.opsService.settingRepo == nil {
+		return defaultOpsAlertSiteName
+	}
+	siteName, err := s.opsService.settingRepo.GetValue(ctx, SettingKeySiteName)
+	if err != nil || strings.TrimSpace(siteName) == "" {
+		return defaultOpsAlertSiteName
+	}
+	return strings.TrimSpace(siteName)
+}
+
+func buildOpsAlertWeComMarkdown(siteName string, rule *OpsAlertRule, event *OpsAlertEvent) string {
 	status := "触发"
+	statusEmoji := "🔥"
 	if event != nil && (event.Status == OpsAlertStatusResolved || event.Status == OpsAlertStatusManualResolved) {
 		status = "恢复"
+		statusEmoji = "✅"
+	}
+	siteName = strings.TrimSpace(siteName)
+	if siteName == "" {
+		siteName = defaultOpsAlertSiteName
 	}
 	name, severity, description := "-", "-", "-"
 	if rule != nil {
@@ -824,7 +842,7 @@ func buildOpsAlertWeComMarkdown(rule *OpsAlertRule, event *OpsAlertEvent) string
 	if event != nil && strings.TrimSpace(event.Description) != "" {
 		description = strings.TrimSpace(event.Description)
 	}
-	content := fmt.Sprintf("## Sub2API 运维预警%s\n> 级别：**%s**\n> 规则：%s\n> 详情：%s", status, severity, name, description)
+	content := fmt.Sprintf("## %s%s运维预警%s\n> 级别：**%s**\n> 规则：%s\n> 详情：%s", statusEmoji, siteName, status, severity, name, description)
 	if event != nil && !event.FiredAt.IsZero() {
 		content += "\n> 触发时间：" + event.FiredAt.UTC().Format(time.RFC3339)
 	}
