@@ -232,7 +232,7 @@ describe('AccountUsageCell', () => {
     expect(getUsage).toHaveBeenCalledWith(5001)
     expect(wrapper.text()).toContain('5h|25|2026-07-21T17:00:00Z')
     expect(wrapper.text()).toContain('7d|42|2026-07-28T12:00:00Z')
-    expect(wrapper.emitted('usageLoaded')?.[0]?.[0]).toMatchObject({
+    expect(wrapper.emitted('usage-loaded')?.[0]?.[0]).toMatchObject({
       subscription_tier: 'INTERMEDIATE',
       subscription_tier_raw: 'LEVEL_INTERMEDIATE'
     })
