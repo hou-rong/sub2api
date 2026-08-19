@@ -96,7 +96,7 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 	}
 
 	// 保留 Kimi Coding OAuth/API Key 专用直转能力；Anthropic 协议已在上方分流。
-	if account.Platform == PlatformKimi {
+	if account.UsesKimiCodingAPI() {
 		return s.forwardKimiChatCompletions(ctx, c, account, body, defaultMappedModel)
 	}
 

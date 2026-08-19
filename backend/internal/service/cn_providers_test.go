@@ -446,7 +446,8 @@ func TestBuildUpstreamModelsRequest_CNProviders(t *testing.T) {
 		mode     string
 		wantURL  string
 	}{
-		{"kimi default", PlatformKimi, "", "https://api.moonshot.cn/v1/models"},
+		{"kimi legacy default", PlatformKimi, "", "https://api.kimi.com/coding/v1/models"},
+		{"kimi payg", PlatformKimi, AccountModePayG, "https://api.moonshot.cn/v1/models"},
 		{"kimi coding", PlatformKimi, AccountModeCoding, "https://api.kimi.com/coding/v1/models"},
 		{"zhipu default", PlatformZhipu, "", "https://open.bigmodel.cn/api/paas/v4/models"},
 		{"zhipu coding", PlatformZhipu, AccountModeCoding, "https://open.bigmodel.cn/api/coding/paas/v4/models"},

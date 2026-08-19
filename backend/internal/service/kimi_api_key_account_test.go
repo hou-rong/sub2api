@@ -28,12 +28,26 @@ func TestNormalizeKimiAPIKeyCredentialsRejectsMissingKey(t *testing.T) {
 
 func TestNormalizeKimiAPIKeyCredentialsRejectsWrongKimiPlatformEndpoint(t *testing.T) {
 	credentials := map[string]any{
-		"api_key":  "kimi-secret",
-		"base_url": "https://api.moonshot.cn/v1",
+		"api_key":      "kimi-secret",
+		"base_url":     "https://api.moonshot.cn/v1",
+		"account_mode": AccountModeCoding,
 	}
 
 	err := normalizeKimiAPIKeyCredentials(PlatformKimi, AccountTypeAPIKey, credentials)
 
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "official Kimi Code")
+}
+
+func TestNormalizeKimiAPIKeyCredentialsAllowsPayGEndpoint(t *testing.T) {
+	credentials := map[string]any{
+		"api_key":      "  kimi-secret  ",
+		"account_mode": AccountModePayG,
+	}
+
+	err := normalizeKimiAPIKeyCredentials(PlatformKimi, AccountTypeAPIKey, credentials)
+
+	require.NoError(t, err)
+	require.Equal(t, "kimi-secret", credentials["api_key"])
+	require.Equal(t, DefaultKimiPayGBaseURL, credentials["base_url"])
 }

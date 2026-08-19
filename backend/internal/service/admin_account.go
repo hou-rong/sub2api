@@ -358,7 +358,20 @@ func normalizeKimiAPIKeyCredentials(platform, accountType string, credentials ma
 	credentials["api_key"] = strings.TrimSpace(apiKey)
 
 	baseURL, _ := credentials["base_url"].(string)
-	if strings.TrimSpace(baseURL) == "" {
+	baseURL = strings.TrimSpace(baseURL)
+	mode, _ := credentials["account_mode"].(string)
+	mode = strings.TrimSpace(mode)
+	// v0.1.178 adds Kimi PayG support. Keep the Kimi branch's legacy default
+	// (API key without account_mode uses Coding), but do not apply the Coding
+	// endpoint allowlist to an explicit PayG account.
+	if mode == AccountModePayG || (mode == "" && baseURL != "" && !strings.Contains(strings.ToLower(baseURL), "api.kimi.com/coding")) {
+		if baseURL == "" {
+			baseURL = DefaultKimiPayGBaseURL
+		}
+		credentials["base_url"] = strings.TrimRight(baseURL, "/")
+		return nil
+	}
+	if baseURL == "" {
 		baseURL = kimi.DefaultBaseURL
 	}
 	normalizedBaseURL, err := kimi.ValidateBaseURL(baseURL)

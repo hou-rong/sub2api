@@ -289,6 +289,27 @@ func (a *Account) IsKimiAPIKey() bool {
 	return a.IsKimi() && a.Type == AccountTypeAPIKey
 }
 
+// UsesKimiCodingAPI reports whether the account should use the Kimi Coding
+// transport. OAuth accounts and legacy API-key accounts (created before
+// account_mode was introduced) keep their original Coding behavior, while an
+// explicit payg mode uses the Moonshot OpenAI-compatible transport.
+func (a *Account) UsesKimiCodingAPI() bool {
+	if !a.IsKimi() {
+		return false
+	}
+	if a.IsKimiOAuth() {
+		return true
+	}
+	if a.GetAccountMode() == AccountModePayG {
+		return false
+	}
+	if a.GetAccountMode() == AccountModeCoding {
+		return true
+	}
+	baseURL := strings.ToLower(strings.TrimSpace(a.GetCredential("base_url")))
+	return baseURL == "" || strings.Contains(baseURL, "api.kimi.com/coding")
+}
+
 func (a *Account) IsZhipu() bool {
 	return a.Platform == PlatformZhipu
 }
