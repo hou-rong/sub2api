@@ -87,6 +87,15 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 		return s.forwardAsRawChatCompletions(ctx, c, account, body, defaultMappedModel)
 	}
 
+	// 入口分流（国产供应商 Anthropic 协议）：上游为供应商原生 Anthropic 端点，
+	// CC 入站请求经 CC→Responses→Anthropic 转换链直通该端点。必须先于
+	// ShouldUseResponsesAPI 分流：该类账号经 probe 落标
+	// openai_responses_supported=false，会先命中下方的 CC 直转分支。
+	if account.IsAnthropicProtocol() {
+		return s.forwardChatCompletionsViaNativeAnthropic(ctx, c, account, body, defaultMappedModel)
+	}
+
+	// 保留 Kimi Coding OAuth/API Key 专用直转能力；Anthropic 协议已在上方分流。
 	if account.Platform == PlatformKimi {
 		return s.forwardKimiChatCompletions(ctx, c, account, body, defaultMappedModel)
 	}
