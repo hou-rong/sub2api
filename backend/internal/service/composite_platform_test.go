@@ -28,6 +28,10 @@ func TestDetectModelPlatform(t *testing.T) {
 		{name: "kimi coding", model: "kimi-for-coding", platform: PlatformKimi, ok: true},
 		{name: "moonshot prefix", model: "moonshot/k3", platform: PlatformKimi, ok: true},
 		{name: "kimi k2 generation", model: "k2p7", platform: PlatformKimi, ok: true},
+		{name: "kimi", model: "kimi-k2-thinking", platform: PlatformKimi, ok: true},
+		{name: "moonshot model prefix", model: "moonshot/moonshot-v1-32k", platform: PlatformKimi, ok: true},
+		{name: "zhipu", model: "glm-5.2", platform: PlatformZhipu, ok: true},
+		{name: "deepseek", model: "deepseek-v4-pro", platform: PlatformDeepseek, ok: true},
 		{name: "unknown", model: "llama-4-maverick", ok: false},
 	}
 
@@ -62,7 +66,14 @@ func TestCompositeGroupSchedulerHasAllCanonicalPlatformBuckets(t *testing.T) {
 		platforms = append(platforms, platform)
 	}
 	require.ElementsMatch(t,
-		[]string{PlatformAnthropic, PlatformGemini, PlatformOpenAI, PlatformAntigravity, PlatformGrok, PlatformKimi},
+		[]string{PlatformAnthropic, PlatformGemini, PlatformOpenAI, PlatformAntigravity, PlatformGrok, PlatformKimi, PlatformZhipu, PlatformDeepseek},
 		platforms,
 	)
+}
+
+func TestCompositeConcretePlatformsIncludeCNProviders(t *testing.T) {
+	for _, platform := range []string{PlatformKimi, PlatformZhipu, PlatformDeepseek} {
+		require.True(t, isConcreteRequestPlatform(platform))
+		require.True(t, canCopyAccountsFromGroupPlatform(PlatformComposite, platform))
+	}
 }

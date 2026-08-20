@@ -6,6 +6,8 @@ import (
 	"context"
 	"testing"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/kimi"
 	"github.com/stretchr/testify/require"
 )
 
@@ -174,6 +176,13 @@ func TestAdminService_CompositeModelsListCandidatesIncludeConcreteAccountMapping
 					"model_mapping": map[string]any{"gemini-custom": "gemini-2.5-flash"},
 				},
 			},
+			{
+				ID:       3,
+				Platform: PlatformKimi,
+				Credentials: map[string]any{
+					"model_mapping": map[string]any{"kimi-custom": "kimi-k2"},
+				},
+			},
 		},
 	}
 	groupRepo := &groupRepoStubForAdmin{
@@ -188,6 +197,20 @@ func TestAdminService_CompositeModelsListCandidatesIncludeConcreteAccountMapping
 	require.NoError(t, err)
 	require.Contains(t, candidates, "gpt-custom")
 	require.Contains(t, candidates, "gemini-custom")
+	require.Contains(t, candidates, "kimi-custom")
 	require.Contains(t, candidates, "gpt-5.5")
 	require.Contains(t, candidates, "gemini-2.5-flash")
+}
+
+// Kimi keeps the fork's Coding model catalog, while the newly added Zhipu and
+// DeepSeek groups retain upstream's Claude-compatible defaults.
+func TestAdminService_CNProviderModelsListCandidatesPreservePlatformDefaults(t *testing.T) {
+	want := make([]string, 0, len(claude.DefaultModels))
+	for _, model := range claude.DefaultModels {
+		want = append(want, model.ID)
+	}
+	require.Equal(t, kimi.DefaultModelIDs(), defaultModelsListCandidateIDs(PlatformKimi))
+	for _, platform := range []string{PlatformZhipu, PlatformDeepseek} {
+		require.Equal(t, want, defaultModelsListCandidateIDs(platform), "platform=%s", platform)
+	}
 }

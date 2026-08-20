@@ -51,3 +51,30 @@ func TestNormalizeKimiAPIKeyCredentialsAllowsPayGEndpoint(t *testing.T) {
 	require.Equal(t, "kimi-secret", credentials["api_key"])
 	require.Equal(t, DefaultKimiPayGBaseURL, credentials["base_url"])
 }
+
+func TestKimiAdaptiveAPIKeyDoesNotUseLegacyCodingTransport(t *testing.T) {
+	account := &Account{
+		Platform: PlatformKimi,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"api_key":      "kimi-secret",
+			"api_protocol": APIProtocolAdaptive,
+			"api_base_urls": map[string]any{
+				APIProtocolChatCompletions: "https://api.moonshot.cn/v1",
+				APIProtocolAnthropic:       "https://api.moonshot.cn/anthropic",
+			},
+		},
+	}
+
+	require.False(t, account.UsesKimiCodingAPI())
+}
+
+func TestKimiLegacyAPIKeyKeepsCodingTransport(t *testing.T) {
+	account := &Account{
+		Platform:    PlatformKimi,
+		Type:        AccountTypeAPIKey,
+		Credentials: map[string]any{"api_key": "kimi-secret"},
+	}
+
+	require.True(t, account.UsesKimiCodingAPI())
+}
