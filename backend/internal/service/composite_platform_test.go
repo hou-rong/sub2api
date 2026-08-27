@@ -30,8 +30,13 @@ func TestDetectModelPlatform(t *testing.T) {
 		{name: "kimi k2 generation", model: "k2p7", platform: PlatformKimi, ok: true},
 		{name: "kimi", model: "kimi-k2-thinking", platform: PlatformKimi, ok: true},
 		{name: "moonshot model prefix", model: "moonshot/moonshot-v1-32k", platform: PlatformKimi, ok: true},
+		{name: "kimi code bare k3", model: "K3", platform: PlatformKimi, ok: true},
+		{name: "kimi code bare k3 256k", model: "k3-256k", platform: PlatformKimi, ok: true},
+		{name: "kimi code provider prefix", model: "kimi-code/k3", platform: PlatformKimi, ok: true},
+		{name: "moonshot prefix", model: "moonshot/moonshot-v1-32k", platform: PlatformKimi, ok: true},
 		{name: "zhipu", model: "glm-5.2", platform: PlatformZhipu, ok: true},
 		{name: "deepseek", model: "deepseek-v4-pro", platform: PlatformDeepseek, ok: true},
+		{name: "unknown k3 alias", model: "k3-preview", ok: false},
 		{name: "unknown", model: "llama-4-maverick", ok: false},
 	}
 
