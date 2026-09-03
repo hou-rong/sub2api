@@ -33,6 +33,11 @@ func TestDeriveAuditAction(t *testing.T) {
 	}
 }
 
+func TestAdminEnsureAPIKeyAuditRouteHasStableAction(t *testing.T) {
+	route := "POST /api/v1/admin/users/:id/api-keys/ensure"
+	require.Equal(t, "admin.users.api_keys.ensure", auditActionOverrides[route])
+}
+
 type auditCaptureRepository struct {
 	mu   sync.Mutex
 	logs []*service.AuditLog

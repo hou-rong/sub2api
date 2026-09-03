@@ -2,6 +2,7 @@ package admin
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	"github.com/Wei-Shaw/sub2api/internal/handler/quotaview"
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -95,6 +97,24 @@ type UpdateBalanceRequest struct {
 	Balance   float64 `json:"balance" binding:"required,gt=0"`
 	Operation string  `json:"operation" binding:"required,oneof=set add subtract"`
 	Notes     string  `json:"notes"`
+}
+
+type EnsureUserAPIKeyRequest struct {
+	Name          string          `json:"name" binding:"required,max=100"`
+	GroupID       int64           `json:"group_id" binding:"required,gt=0"`
+	Quota         float64         `json:"quota"`
+	ExpiresInDays int             `json:"expires_in_days" binding:"required,gt=0"`
+	RateLimit5h   float64         `json:"rate_limit_5h"`
+	RateLimit1d   float64         `json:"rate_limit_1d"`
+	RateLimit7d   float64         `json:"rate_limit_7d"`
+	IPWhitelist   []string        `json:"ip_whitelist"`
+	IPBlacklist   []string        `json:"ip_blacklist"`
+	CustomKey     json.RawMessage `json:"custom_key"`
+}
+
+type ensureUserAPIKeyIdempotencyResult struct {
+	APIKeyID int64 `json:"api_key_id"`
+	Created  bool  `json:"created"`
 }
 
 type BindUserAuthIdentityRequest struct {
@@ -440,6 +460,153 @@ func (h *UserHandler) GetUserAPIKeys(c *gin.Context) {
 		out = append(out, *dto.APIKeyFromService(&keys[i]))
 	}
 	response.Paginated(c, out, total, page, pageSize)
+}
+
+// EnsureUserAPIKey atomically gets or creates one server-generated API key for
+// a user and exact name. The idempotency store only receives the key ID and the
+// created flag; credential material is resolved after coordination.
+func (h *UserHandler) EnsureUserAPIKey(c *gin.Context) {
+	c.Header("Cache-Control", "no-store")
+	c.Header("Pragma", "no-cache")
+	middleware.SetAuditAction(c, "admin.users.api_keys.ensure")
+
+	userID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || userID <= 0 {
+		response.BadRequest(c, "Invalid user ID")
+		return
+	}
+
+	var req EnsureUserAPIKeyRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.ErrorFrom(c, infraerrors.BadRequest("INVALID_REQUEST", "invalid ensure API key request"))
+		return
+	}
+	if len(req.CustomKey) > 0 {
+		response.ErrorFrom(c, infraerrors.BadRequest("INVALID_REQUEST", "custom_key is not accepted"))
+		return
+	}
+
+	idempotencyKey, err := service.NormalizeIdempotencyKey(c.GetHeader("Idempotency-Key"))
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	if idempotencyKey == "" {
+		response.ErrorFrom(c, service.ErrIdempotencyKeyRequired)
+		return
+	}
+	if service.DefaultIdempotencyCoordinator() == nil {
+		response.ErrorFrom(c, service.ErrIdempotencyStoreUnavail)
+		return
+	}
+
+	input := service.AdminEnsureAPIKeyInput{
+		Name:          req.Name,
+		GroupID:       req.GroupID,
+		Quota:         req.Quota,
+		ExpiresInDays: req.ExpiresInDays,
+		RateLimit5h:   req.RateLimit5h,
+		RateLimit1d:   req.RateLimit1d,
+		RateLimit7d:   req.RateLimit7d,
+		IPWhitelist:   append([]string(nil), req.IPWhitelist...),
+		IPBlacklist:   append([]string(nil), req.IPBlacklist...),
+	}
+	payload := struct {
+		UserID int64                          `json:"user_id"`
+		Input  service.AdminEnsureAPIKeyInput `json:"input"`
+	}{UserID: userID, Input: input}
+
+	result, err := executeAdminIdempotent(
+		c,
+		"admin.users.api_keys.ensure",
+		payload,
+		service.DefaultWriteIdempotencyTTL(),
+		func(ctx context.Context) (any, error) {
+			ensured, ensureErr := h.adminService.EnsureUserAPIKey(ctx, userID, input)
+			if ensureErr != nil {
+				return nil, ensureErr
+			}
+			if ensured == nil || ensured.APIKey == nil || ensured.APIKey.ID <= 0 {
+				return nil, service.ErrAdminManagedAPIKeyEnsureUnavailable
+			}
+			return ensureUserAPIKeyIdempotencyResult{
+				APIKeyID: ensured.APIKey.ID,
+				Created:  ensured.Created,
+			}, nil
+		},
+	)
+	if err != nil {
+		if retryAfter := service.RetryAfterSecondsFromError(err); retryAfter > 0 {
+			c.Header("Retry-After", strconv.Itoa(retryAfter))
+		}
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	ref, err := decodeEnsureUserAPIKeyIdempotencyResult(result.Data)
+	if err != nil {
+		response.ErrorFrom(c, service.ErrAdminManagedAPIKeyReplayUnavailable.WithCause(err))
+		return
+	}
+	if err := h.adminService.ValidateUserAPIKeyProvisioningAccess(c.Request.Context(), userID, input.GroupID); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	apiKey, err := h.resolveEnsuredUserAPIKey(c.Request.Context(), userID, ref.APIKeyID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	if err := service.ValidateAdminManagedAPIKeyForEnsure(apiKey, userID, input); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	if result.Replayed {
+		c.Header("X-Idempotency-Replayed", "true")
+	}
+	middleware.SetAuditExtra(c, map[string]any{
+		"result":         "success",
+		"created":        ref.Created,
+		"target_user_id": userID,
+		"api_key_id":     apiKey.ID,
+	})
+	response.Success(c, gin.H{
+		"created": ref.Created,
+		"api_key": dto.APIKeyFromService(apiKey),
+	})
+}
+
+func decodeEnsureUserAPIKeyIdempotencyResult(data any) (ensureUserAPIKeyIdempotencyResult, error) {
+	raw, err := json.Marshal(data)
+	if err != nil {
+		return ensureUserAPIKeyIdempotencyResult{}, err
+	}
+	var result ensureUserAPIKeyIdempotencyResult
+	if err := json.Unmarshal(raw, &result); err != nil {
+		return ensureUserAPIKeyIdempotencyResult{}, err
+	}
+	if result.APIKeyID <= 0 {
+		return ensureUserAPIKeyIdempotencyResult{}, errors.New("idempotency result is missing api_key_id")
+	}
+	return result, nil
+}
+
+func (h *UserHandler) resolveEnsuredUserAPIKey(ctx context.Context, userID, keyID int64) (*service.APIKey, error) {
+	const pageSize = 1000
+	for page := 1; ; page++ {
+		keys, total, err := h.adminService.GetUserAPIKeys(ctx, userID, page, pageSize, "id", "asc")
+		if err != nil {
+			return nil, err
+		}
+		for i := range keys {
+			if keys[i].ID == keyID && keys[i].UserID == userID {
+				return &keys[i], nil
+			}
+		}
+		if int64(page*pageSize) >= total {
+			return nil, service.ErrAdminManagedAPIKeyReplayUnavailable
+		}
+	}
 }
 
 // GetUserUsage handles getting user's usage statistics

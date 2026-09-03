@@ -127,6 +127,20 @@ node scripts/sub2api-admin.js groups all
 node scripts/sub2api-admin.js proxies all
 ```
 
+## Managed User API Keys
+
+为受信任的服务端编排幂等获取或创建指定用户的命名 Key。`Idempotency-Key` 必须是稳定摘要，不能包含
+原始邮箱或其他个人信息；响应含完整 `sk-...`，不要打印到共享终端、日志或工单。
+
+```bash
+node scripts/sub2api-admin.js api POST /admin/users/123/api-keys/ensure \
+  --idempotency-key 'provisioning-request-sha256-v1' \
+  --json '{"name":"employee-zhishu-client","group_id":2,"quota":0,"expires_in_days":365,"rate_limit_5h":0,"rate_limit_1d":0,"rate_limit_7d":0,"ip_whitelist":[],"ip_blacklist":[]}'
+```
+
+接口拒绝 `custom_key`，同名历史冲突或不可用 Key 不会自动修复。详细协议见
+`docs/ADMIN_MANAGED_API_KEYS.md`。
+
 ## Redeem Codes
 
 兑换码类型包括 `balance`、`concurrency`、`subscription`、`invitation`。状态常用 `unused`、`used`、`expired`。
@@ -244,6 +258,7 @@ node scripts/sub2api-admin.js api POST /admin/accounts/bulk-update \
 - `GET /api/v1/admin/accounts/antigravity/default-model-mapping`
 - `GET /api/v1/admin/groups/all`
 - `GET /api/v1/admin/proxies/all`
+- `POST /api/v1/admin/users/:id/api-keys/ensure`
 - `GET /api/v1/admin/redeem-codes`
 - `GET /api/v1/admin/redeem-codes/export`
 - `GET /api/v1/admin/redeem-codes/stats`

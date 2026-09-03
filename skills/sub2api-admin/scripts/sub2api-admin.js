@@ -58,7 +58,7 @@ function usage() {
   sub2api-admin.js redeem-codes stats
   sub2api-admin.js error-rules list|get|create|update|delete|toggle ...
   sub2api-admin.js tls-profiles list|get|create|update|delete ...
-  sub2api-admin.js api <GET|POST|PUT|DELETE> <admin-path> [--json '{...}' | --file payload.json]
+  sub2api-admin.js api <GET|POST|PUT|DELETE> <admin-path> [--json '{...}' | --file payload.json] [--idempotency-key KEY]
 `);
 }
 
@@ -712,7 +712,7 @@ async function commandApi(args) {
   const pathname = args.positional[2];
   if (!method || !pathname) throw new Error("api requires <GET|POST|PUT|DELETE> <admin-path>");
   const body = readJsonPayload(args.flags, { required: false });
-  printJson(await adminRequest(method.toUpperCase(), pathname, body));
+  printJson(await adminRequestWithHeaders(method.toUpperCase(), pathname, body, idempotencyHeaders(args.flags)));
 }
 
 async function main() {
