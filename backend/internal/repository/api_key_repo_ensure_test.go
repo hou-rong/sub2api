@@ -126,3 +126,41 @@ func TestEnsureByUserIDAndNameRejectsHistoricalDuplicates(t *testing.T) {
 	_, _, err := repo.EnsureByUserIDAndName(ctx, candidate)
 	require.ErrorIs(t, err, service.ErrAPIKeyNameConflict)
 }
+
+func TestEnsureByUserIDAndNameRejectsInactiveAuthorizationBeforeInsert(t *testing.T) {
+	t.Run("user", func(t *testing.T) {
+		ctx, client, repo, userID, groupID := newEnsureAPIKeyRepoTest(t)
+		_, err := client.User.UpdateOneID(userID).SetStatus(service.StatusDisabled).Save(ctx)
+		require.NoError(t, err)
+
+		expiresAt := time.Now().UTC().AddDate(0, 0, 365)
+		candidate := &service.APIKey{
+			UserID: userID, Key: "sk-must-not-persist", Name: "inactive-user-key",
+			GroupID: &groupID, Status: service.StatusActive, ExpiresAt: &expiresAt,
+		}
+		_, _, err = repo.EnsureByUserIDAndName(ctx, candidate)
+		require.ErrorIs(t, err, service.ErrAdminManagedUserInactive)
+
+		count, countErr := client.APIKey.Query().Where(apikey.UserIDEQ(userID)).Count(ctx)
+		require.NoError(t, countErr)
+		require.Zero(t, count)
+	})
+
+	t.Run("group", func(t *testing.T) {
+		ctx, client, repo, userID, groupID := newEnsureAPIKeyRepoTest(t)
+		_, err := client.Group.UpdateOneID(groupID).SetStatus(service.StatusDisabled).Save(ctx)
+		require.NoError(t, err)
+
+		expiresAt := time.Now().UTC().AddDate(0, 0, 365)
+		candidate := &service.APIKey{
+			UserID: userID, Key: "sk-must-not-persist", Name: "inactive-group-key",
+			GroupID: &groupID, Status: service.StatusActive, ExpiresAt: &expiresAt,
+		}
+		_, _, err = repo.EnsureByUserIDAndName(ctx, candidate)
+		require.ErrorIs(t, err, service.ErrGroupNotAllowed)
+
+		count, countErr := client.APIKey.Query().Where(apikey.UserIDEQ(userID)).Count(ctx)
+		require.NoError(t, countErr)
+		require.Zero(t, count)
+	})
+}

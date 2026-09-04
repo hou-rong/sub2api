@@ -43,7 +43,9 @@ Content-Type: application/json
 相同 `Idempotency-Key` 与相同请求返回同一结果；请求体不同时返回 `409
 IDEMPOTENCY_KEY_CONFLICT`。幂等存储不可用时返回 `503`，不会降级创建。幂等记录只保存 Key ID 和
 `created` 标记，不保存完整凭证。不同幂等键的并发首次请求仍由 PostgreSQL 事务级 advisory lock
-按 `user_id + name` 串行化；历史同名冲突保持失败关闭。
+按 `user_id + name` 串行化；取得该锁后，同一事务还会以行锁重新读取用户、分组，以及适用的专属组授权
+或有效订阅，授权快照通过后才允许查询或创建 Key。并发禁用用户/分组或撤销既有授权会与该事务串行化，
+不会出现接口返回拒绝但 Key 已经落库的状态；历史同名冲突保持失败关闭。
 
 ## 审计与运维
 

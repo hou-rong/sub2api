@@ -181,10 +181,9 @@ func (s *adminServiceImpl) ValidateUserAPIKeyProvisioningAccess(ctx context.Cont
 	if err != nil {
 		return err
 	}
-	if !user.IsActive() {
-		return ErrAdminManagedUserInactive
+	if err := ValidateAdminManagedAPIKeyUserSnapshot(user); err != nil {
+		return err
 	}
-
 	group, err := s.groupRepo.GetByID(ctx, groupID)
 	if err != nil {
 		if errors.Is(err, ErrGroupNotFound) {
@@ -192,15 +191,54 @@ func (s *adminServiceImpl) ValidateUserAPIKeyProvisioningAccess(ctx context.Cont
 		}
 		return err
 	}
-	if group == nil || !group.IsActive() {
-		return ErrGroupNotAllowed
+	subscriptionActive := false
+	if group != nil && group.IsSubscriptionType() {
+		if s.userSubRepo == nil {
+			return infraerrors.InternalServer(
+				"SUBSCRIPTION_REPOSITORY_UNAVAILABLE",
+				"subscription repository is not configured",
+			)
+		}
+		if _, err := s.userSubRepo.GetActiveByUserIDAndGroupID(ctx, user.ID, group.ID); err != nil {
+			if !errors.Is(err, ErrSubscriptionNotFound) {
+				return err
+			}
+		} else {
+			subscriptionActive = true
+		}
 	}
-	allowed, err := s.adminManagedUserCanBindGroup(ctx, user, group)
-	if err != nil {
+	return ValidateAdminManagedAPIKeyProvisioningSnapshot(user, group, subscriptionActive)
+}
+
+// ValidateAdminManagedAPIKeyProvisioningSnapshot is the single authorization
+// rule used by both the service precheck and the repository's locked snapshot.
+func ValidateAdminManagedAPIKeyProvisioningSnapshot(user *User, group *Group, subscriptionActive bool) error {
+	if err := ValidateAdminManagedAPIKeyUserSnapshot(user); err != nil {
 		return err
 	}
-	if !allowed {
+	if group == nil || group.ID <= 0 || !group.IsActive() {
 		return ErrGroupNotAllowed
+	}
+	if group.IsSubscriptionType() {
+		if !subscriptionActive {
+			return ErrGroupNotAllowed
+		}
+		return nil
+	}
+	if !user.CanBindGroup(group.ID, group.IsExclusive) {
+		return ErrGroupNotAllowed
+	}
+	return nil
+}
+
+// ValidateAdminManagedAPIKeyUserSnapshot preserves the USER_INACTIVE error
+// priority as soon as a trusted user snapshot has been read or locked.
+func ValidateAdminManagedAPIKeyUserSnapshot(user *User) error {
+	if user == nil || user.ID <= 0 {
+		return ErrUserNotFound
+	}
+	if !user.IsActive() {
+		return ErrAdminManagedUserInactive
 	}
 	return nil
 }
@@ -220,29 +258,6 @@ func ValidateAdminManagedAPIKeyForEnsure(apiKey *APIKey, userID int64, input Adm
 		return ErrAPIKeyUnusable
 	}
 	return nil
-}
-
-func (s *adminServiceImpl) adminManagedUserCanBindGroup(ctx context.Context, user *User, group *Group) (bool, error) {
-	if user == nil || group == nil {
-		return false, nil
-	}
-	if group.IsSubscriptionType() {
-		if s.userSubRepo == nil {
-			return false, infraerrors.InternalServer(
-				"SUBSCRIPTION_REPOSITORY_UNAVAILABLE",
-				"subscription repository is not configured",
-			)
-		}
-		_, err := s.userSubRepo.GetActiveByUserIDAndGroupID(ctx, user.ID, group.ID)
-		if err == nil {
-			return true, nil
-		}
-		if errors.Is(err, ErrSubscriptionNotFound) {
-			return false, nil
-		}
-		return false, err
-	}
-	return user.CanBindGroup(group.ID, group.IsExclusive), nil
 }
 
 func generateAdminManagedAPIKey() (string, error) {

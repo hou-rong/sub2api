@@ -76,6 +76,20 @@ func TestAdminEnsureUserAPIKeyRejectsInactiveUserAndUnusableExistingKey(t *testi
 	require.ErrorIs(t, err, ErrAPIKeyUnusable)
 }
 
+func TestAdminEnsureUserAPIKeyKeepsInactiveUserErrorPriority(t *testing.T) {
+	user := &User{ID: 7, Status: StatusDisabled}
+	repo := &apiKeyRepoStubForGroupUpdate{}
+	svc := newManagedAPIKeyServiceForTest(user, nil, repo)
+	svc.groupRepo = &ensureGroupRepo{
+		groupRepoStub: &groupRepoStub{},
+		err:           ErrGroupNotFound,
+	}
+
+	_, err := svc.EnsureUserAPIKey(context.Background(), user.ID, managedAPIKeyInput())
+	require.ErrorIs(t, err, ErrAdminManagedUserInactive)
+	require.Nil(t, repo.ensureInput)
+}
+
 func TestAdminEnsureUserAPIKeyRejectsInvalidLimitsAndUnauthorizedGroup(t *testing.T) {
 	user := &User{ID: 7, Status: StatusActive}
 	group := &Group{ID: 2, Status: StatusActive, IsExclusive: true}
