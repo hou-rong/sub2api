@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestAdminEnsureUserAPIKeyRouteIsRegisteredBehindAdminAuth(t *testing.T) {
+func TestAdminProvisioningRoutesAreRegisteredBehindAdminAuth(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 	handlers := &handler.Handlers{Admin: &handler.AdminHandlers{}}
@@ -22,9 +22,14 @@ func TestAdminEnsureUserAPIKeyRouteIsRegisteredBehindAdminAuth(t *testing.T) {
 	stepUp := servermiddleware.StepUpAuthMiddleware(func(c *gin.Context) { c.Next() })
 	RegisterAdminRoutes(router.Group("/api/v1"), handlers, adminAuth, auditLog, stepUp, nil, nil)
 
-	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/admin/users/1/api-keys/ensure", nil)
-	router.ServeHTTP(recorder, request)
+	for _, path := range []string{
+		"/api/v1/admin/users/1/api-keys/ensure",
+		"/api/v1/admin/provisioning/employee-api-key",
+	} {
+		recorder := httptest.NewRecorder()
+		request := httptest.NewRequest(http.MethodPost, path, nil)
+		router.ServeHTTP(recorder, request)
 
-	require.Equal(t, http.StatusUnauthorized, recorder.Code)
+		require.Equal(t, http.StatusUnauthorized, recorder.Code)
+	}
 }

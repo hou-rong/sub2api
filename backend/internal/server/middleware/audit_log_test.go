@@ -36,6 +36,11 @@ func TestDeriveAuditAction(t *testing.T) {
 func TestAdminEnsureAPIKeyAuditRouteHasStableAction(t *testing.T) {
 	route := "POST /api/v1/admin/users/:id/api-keys/ensure"
 	require.Equal(t, "admin.users.api_keys.ensure", auditActionOverrides[route])
+	require.Equal(
+		t,
+		"admin.provisioning.employee_api_key.ensure",
+		auditActionOverrides["POST /api/v1/admin/provisioning/employee-api-key"],
+	)
 }
 
 func TestAdminEnsureAPIKeyAuditRedactsCredentialMaterial(t *testing.T) {

@@ -242,6 +242,55 @@ func (s *stubAdminService) EnsureUserAPIKey(ctx context.Context, userID int64, i
 	return &service.AdminEnsureAPIKeyResult{Created: true, APIKey: &s.apiKeys[len(s.apiKeys)-1]}, nil
 }
 
+func (s *stubAdminService) ProvisionEmployeeAPIKey(ctx context.Context, input service.AdminProvisionEmployeeAPIKeyInput) (*service.AdminProvisionEmployeeAPIKeyResult, error) {
+	email := strings.ToLower(strings.TrimSpace(input.Email))
+	var user *service.User
+	userCreated := false
+	for i := range s.users {
+		if strings.EqualFold(strings.TrimSpace(s.users[i].Email), email) {
+			user = &s.users[i]
+			break
+		}
+	}
+	if user == nil {
+		username := strings.TrimSpace(input.Username)
+		if username == "" {
+			username, _, _ = strings.Cut(email, "@")
+		}
+		s.users = append(s.users, service.User{
+			ID:                   int64(100 + len(s.users)),
+			Email:                email,
+			Username:             username,
+			Notes:                "provisioned by zhishu",
+			Role:                 service.RoleUser,
+			Status:               service.StatusActive,
+			Concurrency:          input.Concurrency,
+			RPMLimit:             input.RPMLimit,
+			AllowedGroups:        []int64{input.APIKey.GroupID},
+			RestrictPublicGroups: true,
+		})
+		user = &s.users[len(s.users)-1]
+		userCreated = true
+	}
+	if !user.IsActive() {
+		return nil, service.ErrAdminManagedUserInactive
+	}
+	if input.APIKey.Name == "" {
+		localPart, _, _ := strings.Cut(email, "@")
+		input.APIKey.Name = localPart + "-zhishu-client"
+	}
+	ensured, err := s.EnsureUserAPIKey(ctx, user.ID, input.APIKey)
+	if err != nil {
+		return nil, err
+	}
+	return &service.AdminProvisionEmployeeAPIKeyResult{
+		UserCreated:   userCreated,
+		APIKeyCreated: ensured.Created,
+		User:          user,
+		APIKey:        ensured.APIKey,
+	}, nil
+}
+
 func (s *stubAdminService) GetUserUsageStats(ctx context.Context, userID int64, period string) (any, error) {
 	return map[string]any{"user_id": userID}, nil
 }

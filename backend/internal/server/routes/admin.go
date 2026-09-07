@@ -304,6 +304,8 @@ func registerDashboardRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 }
 
 func registerUserManagementRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	admin.POST("/provisioning/employee-api-key", h.Admin.User.ProvisionEmployeeAPIKey)
+
 	users := admin.Group("/users")
 	{
 		users.GET("", h.Admin.User.List)

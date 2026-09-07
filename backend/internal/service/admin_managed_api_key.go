@@ -88,30 +88,9 @@ func (s *adminServiceImpl) EnsureUserAPIKey(
 		return nil, ErrAdminManagedAPIKeyEnsureUnavailable
 	}
 
-	name := strings.TrimSpace(input.Name)
-	if name == "" || utf8.RuneCountInString(name) > 100 {
-		return nil, infraerrors.BadRequest("INVALID_REQUEST", "name is required and must not exceed 100 characters")
-	}
-	normalizedName := html.EscapeString(name)
-	if utf8.RuneCountInString(normalizedName) > 100 {
-		return nil, infraerrors.BadRequest("INVALID_REQUEST", "escaped name must not exceed 100 characters")
-	}
-	if input.GroupID <= 0 {
-		return nil, infraerrors.BadRequest("INVALID_REQUEST", "group_id must be greater than zero")
-	}
-	if input.ExpiresInDays <= 0 || input.ExpiresInDays > adminManagedAPIKeyMaxExpiryDay {
-		return nil, infraerrors.BadRequest("INVALID_REQUEST", "expires_in_days must be between 1 and 36500")
-	}
-	for _, value := range []float64{input.Quota, input.RateLimit5h, input.RateLimit1d, input.RateLimit7d} {
-		if err := validateAPIKeyLimit(value); err != nil {
-			return nil, infraerrors.BadRequest("INVALID_REQUEST", "numeric limits must be finite and non-negative")
-		}
-	}
-	if invalid := ip.ValidateIPPatterns(input.IPWhitelist); len(invalid) > 0 {
-		return nil, infraerrors.BadRequest("INVALID_REQUEST", "ip_whitelist contains an invalid IP or CIDR")
-	}
-	if invalid := ip.ValidateIPPatterns(input.IPBlacklist); len(invalid) > 0 {
-		return nil, infraerrors.BadRequest("INVALID_REQUEST", "ip_blacklist contains an invalid IP or CIDR")
+	normalizedName, err := validateAdminEnsureAPIKeyInput(input)
+	if err != nil {
+		return nil, err
 	}
 
 	if err := s.ValidateUserAPIKeyProvisioningAccess(ctx, userID, input.GroupID); err != nil {
@@ -162,6 +141,35 @@ func (s *adminServiceImpl) EnsureUserAPIKey(
 	}
 
 	return nil, ErrAdminManagedAPIKeyEnsureUnavailable
+}
+
+func validateAdminEnsureAPIKeyInput(input AdminEnsureAPIKeyInput) (string, error) {
+	name := strings.TrimSpace(input.Name)
+	if name == "" || utf8.RuneCountInString(name) > 100 {
+		return "", infraerrors.BadRequest("INVALID_REQUEST", "name is required and must not exceed 100 characters")
+	}
+	normalizedName := html.EscapeString(name)
+	if utf8.RuneCountInString(normalizedName) > 100 {
+		return "", infraerrors.BadRequest("INVALID_REQUEST", "escaped name must not exceed 100 characters")
+	}
+	if input.GroupID <= 0 {
+		return "", infraerrors.BadRequest("INVALID_REQUEST", "group_id must be greater than zero")
+	}
+	if input.ExpiresInDays <= 0 || input.ExpiresInDays > adminManagedAPIKeyMaxExpiryDay {
+		return "", infraerrors.BadRequest("INVALID_REQUEST", "expires_in_days must be between 1 and 36500")
+	}
+	for _, value := range []float64{input.Quota, input.RateLimit5h, input.RateLimit1d, input.RateLimit7d} {
+		if err := validateAPIKeyLimit(value); err != nil {
+			return "", infraerrors.BadRequest("INVALID_REQUEST", "numeric limits must be finite and non-negative")
+		}
+	}
+	if invalid := ip.ValidateIPPatterns(input.IPWhitelist); len(invalid) > 0 {
+		return "", infraerrors.BadRequest("INVALID_REQUEST", "ip_whitelist contains an invalid IP or CIDR")
+	}
+	if invalid := ip.ValidateIPPatterns(input.IPBlacklist); len(invalid) > 0 {
+		return "", infraerrors.BadRequest("INVALID_REQUEST", "ip_blacklist contains an invalid IP or CIDR")
+	}
+	return normalizedName, nil
 }
 
 // ValidateUserAPIKeyProvisioningAccess checks the mutable user, group, and

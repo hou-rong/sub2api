@@ -24,6 +24,7 @@ type AdminService interface {
 	GetUserAPIKeys(ctx context.Context, userID int64, page, pageSize int, sortBy, sortOrder string) ([]APIKey, int64, error)
 	ValidateUserAPIKeyProvisioningAccess(ctx context.Context, userID, groupID int64) error
 	EnsureUserAPIKey(ctx context.Context, userID int64, input AdminEnsureAPIKeyInput) (*AdminEnsureAPIKeyResult, error)
+	ProvisionEmployeeAPIKey(ctx context.Context, input AdminProvisionEmployeeAPIKeyInput) (*AdminProvisionEmployeeAPIKeyResult, error)
 	GetUserUsageStats(ctx context.Context, userID int64, period string) (any, error)
 	GetUserRPMStatus(ctx context.Context, userID int64) (*UserRPMStatus, error)
 	// GetUserBalanceHistory returns paginated balance/concurrency change records for a user.

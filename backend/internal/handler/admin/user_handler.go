@@ -117,6 +117,32 @@ type ensureUserAPIKeyIdempotencyResult struct {
 	Created  bool  `json:"created"`
 }
 
+type ProvisionEmployeeAPIKeyRequest struct {
+	Email         string          `json:"email" binding:"required,email,max=255"`
+	Username      string          `json:"username" binding:"omitempty,max=100"`
+	KeyName       string          `json:"key_name" binding:"omitempty,max=100"`
+	GroupID       int64           `json:"group_id" binding:"required,gt=0"`
+	Concurrency   int             `json:"concurrency" binding:"required,gt=0"`
+	RPMLimit      int             `json:"rpm_limit" binding:"min=0"`
+	Quota         float64         `json:"quota" binding:"min=0"`
+	ExpiresInDays int             `json:"expires_in_days" binding:"required,gt=0"`
+	RateLimit5h   float64         `json:"rate_limit_5h" binding:"min=0"`
+	RateLimit1d   float64         `json:"rate_limit_1d" binding:"min=0"`
+	RateLimit7d   float64         `json:"rate_limit_7d" binding:"min=0"`
+	IPWhitelist   []string        `json:"ip_whitelist"`
+	IPBlacklist   []string        `json:"ip_blacklist"`
+	Password      json.RawMessage `json:"password"`
+	Role          json.RawMessage `json:"role"`
+	CustomKey     json.RawMessage `json:"custom_key"`
+}
+
+type provisionEmployeeAPIKeyIdempotencyResult struct {
+	UserID        int64 `json:"user_id"`
+	APIKeyID      int64 `json:"api_key_id"`
+	UserCreated   bool  `json:"user_created"`
+	APIKeyCreated bool  `json:"api_key_created"`
+}
+
 type BindUserAuthIdentityRequest struct {
 	ProviderType    string                              `json:"provider_type"`
 	ProviderKey     string                              `json:"provider_key"`
@@ -574,6 +600,173 @@ func (h *UserHandler) EnsureUserAPIKey(c *gin.Context) {
 		"created": ref.Created,
 		"api_key": dto.APIKeyFromService(apiKey),
 	})
+}
+
+// ProvisionEmployeeAPIKey ensures both an exact-email user and its managed API
+// key. Credential material is resolved only after idempotency coordination, so
+// it is never persisted in the idempotency record.
+func (h *UserHandler) ProvisionEmployeeAPIKey(c *gin.Context) {
+	c.Header("Cache-Control", "no-store")
+	c.Header("Pragma", "no-cache")
+	middleware.SetAuditAction(c, "admin.provisioning.employee_api_key.ensure")
+
+	var req ProvisionEmployeeAPIKeyRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.ErrorFrom(c, infraerrors.BadRequest("INVALID_REQUEST", "invalid employee API key provisioning request"))
+		return
+	}
+	if len(req.Password) > 0 || len(req.Role) > 0 || len(req.CustomKey) > 0 {
+		response.ErrorFrom(c, infraerrors.BadRequest(
+			"INVALID_REQUEST",
+			"password, role, and custom_key are managed by the server and must not be supplied",
+		))
+		return
+	}
+
+	idempotencyKey, err := service.NormalizeIdempotencyKey(c.GetHeader("Idempotency-Key"))
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	if idempotencyKey == "" {
+		response.ErrorFrom(c, service.ErrIdempotencyKeyRequired)
+		return
+	}
+	if service.DefaultIdempotencyCoordinator() == nil {
+		response.ErrorFrom(c, service.ErrIdempotencyStoreUnavail)
+		return
+	}
+
+	normalizedEmail := strings.ToLower(strings.TrimSpace(req.Email))
+	keyName := strings.TrimSpace(req.KeyName)
+	if keyName == "" {
+		if localPart, _, ok := strings.Cut(normalizedEmail, "@"); ok {
+			keyName = localPart + "-zhishu-client"
+		}
+	}
+	input := service.AdminProvisionEmployeeAPIKeyInput{
+		Email:        normalizedEmail,
+		Username:     strings.TrimSpace(req.Username),
+		KeyName:      keyName,
+		Concurrency:  req.Concurrency,
+		RPMLimit:     req.RPMLimit,
+		ActorAdminID: getAdminIDFromContext(c),
+		APIKey: service.AdminEnsureAPIKeyInput{
+			GroupID:       req.GroupID,
+			Quota:         req.Quota,
+			ExpiresInDays: req.ExpiresInDays,
+			RateLimit5h:   req.RateLimit5h,
+			RateLimit1d:   req.RateLimit1d,
+			RateLimit7d:   req.RateLimit7d,
+			IPWhitelist:   append([]string(nil), req.IPWhitelist...),
+			IPBlacklist:   append([]string(nil), req.IPBlacklist...),
+		},
+	}
+	input.APIKey.Name = input.KeyName
+	payload := struct {
+		Email       string                         `json:"email"`
+		Username    string                         `json:"username"`
+		KeyName     string                         `json:"key_name"`
+		Concurrency int                            `json:"concurrency"`
+		RPMLimit    int                            `json:"rpm_limit"`
+		APIKey      service.AdminEnsureAPIKeyInput `json:"api_key"`
+	}{
+		Email:       input.Email,
+		Username:    input.Username,
+		KeyName:     input.KeyName,
+		Concurrency: input.Concurrency,
+		RPMLimit:    input.RPMLimit,
+		APIKey:      input.APIKey,
+	}
+
+	result, err := executeAdminIdempotent(
+		c,
+		"admin.provisioning.employee_api_key.ensure",
+		payload,
+		service.DefaultWriteIdempotencyTTL(),
+		func(ctx context.Context) (any, error) {
+			provisioned, provisionErr := h.adminService.ProvisionEmployeeAPIKey(ctx, input)
+			if provisionErr != nil {
+				return nil, provisionErr
+			}
+			if provisioned == nil || provisioned.User == nil || provisioned.APIKey == nil ||
+				provisioned.User.ID <= 0 || provisioned.APIKey.ID <= 0 {
+				return nil, service.ErrAdminEmployeeProvisioningUnavailable
+			}
+			return provisionEmployeeAPIKeyIdempotencyResult{
+				UserID:        provisioned.User.ID,
+				APIKeyID:      provisioned.APIKey.ID,
+				UserCreated:   provisioned.UserCreated,
+				APIKeyCreated: provisioned.APIKeyCreated,
+			}, nil
+		},
+	)
+	if err != nil {
+		if retryAfter := service.RetryAfterSecondsFromError(err); retryAfter > 0 {
+			c.Header("Retry-After", strconv.Itoa(retryAfter))
+		}
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	ref, err := decodeProvisionEmployeeAPIKeyIdempotencyResult(result.Data)
+	if err != nil {
+		response.ErrorFrom(c, service.ErrAdminEmployeeProvisioningUnavailable.WithCause(err))
+		return
+	}
+	user, err := h.adminService.GetUser(c.Request.Context(), ref.UserID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	if user == nil || !strings.EqualFold(strings.TrimSpace(user.Email), input.Email) {
+		response.ErrorFrom(c, service.ErrAdminEmployeeProvisioningUnavailable)
+		return
+	}
+	if err := h.adminService.ValidateUserAPIKeyProvisioningAccess(c.Request.Context(), user.ID, input.APIKey.GroupID); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	apiKey, err := h.resolveEnsuredUserAPIKey(c.Request.Context(), user.ID, ref.APIKeyID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	if err := service.ValidateAdminManagedAPIKeyForEnsure(apiKey, user.ID, input.APIKey); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	if result.Replayed {
+		c.Header("X-Idempotency-Replayed", "true")
+	}
+	middleware.SetAuditExtra(c, map[string]any{
+		"result":          "success",
+		"user_created":    ref.UserCreated,
+		"api_key_created": ref.APIKeyCreated,
+		"target_user_id":  user.ID,
+		"api_key_id":      apiKey.ID,
+	})
+	response.Success(c, gin.H{
+		"user_created":    ref.UserCreated,
+		"api_key_created": ref.APIKeyCreated,
+		"user":            dto.UserFromServiceAdmin(user),
+		"api_key":         dto.APIKeyFromService(apiKey),
+	})
+}
+
+func decodeProvisionEmployeeAPIKeyIdempotencyResult(data any) (provisionEmployeeAPIKeyIdempotencyResult, error) {
+	raw, err := json.Marshal(data)
+	if err != nil {
+		return provisionEmployeeAPIKeyIdempotencyResult{}, err
+	}
+	var result provisionEmployeeAPIKeyIdempotencyResult
+	if err := json.Unmarshal(raw, &result); err != nil {
+		return provisionEmployeeAPIKeyIdempotencyResult{}, err
+	}
+	if result.UserID <= 0 || result.APIKeyID <= 0 {
+		return provisionEmployeeAPIKeyIdempotencyResult{}, errors.New("idempotency result is missing user_id or api_key_id")
+	}
+	return result, nil
 }
 
 func decodeEnsureUserAPIKeyIdempotencyResult(data any) (ensureUserAPIKeyIdempotencyResult, error) {

@@ -58,7 +58,7 @@ var auditExtraAllowedKeys = map[string]struct{}{
 	"http_status": {}, "latency_ms": {}, "token_applied": {}, "retryable": {},
 	"event_id": {}, "requested_count": {}, "deleted_events": {}, "deleted_jobs": {},
 	"matched_count": {}, "snapshot_max_id": {}, "filter_hash": {}, "confirm": {},
-	"created": {}, "target_user_id": {}, "api_key_id": {},
+	"created": {}, "user_created": {}, "api_key_created": {}, "target_user_id": {}, "api_key_id": {},
 }
 
 // SetAuditExtra adds allowlisted, scalar details to the current audit entry.
@@ -138,6 +138,7 @@ var auditActionOverrides = map[string]string{
 	"POST /api/v1/admin/settings/admin-api-key/regenerate":    "admin.admin_api_key.regenerate",
 	"DELETE /api/v1/admin/settings/admin-api-key":             "admin.admin_api_key.delete",
 	"POST /api/v1/admin/users/:id/api-keys/ensure":            "admin.users.api_keys.ensure",
+	"POST /api/v1/admin/provisioning/employee-api-key":        "admin.provisioning.employee_api_key.ensure",
 	"PUT /api/v1/admin/prompt-audit/config":                   "admin.prompt_audit.config.update",
 	"POST /api/v1/admin/prompt-audit/endpoints/probe":         "admin.prompt_audit.endpoint.probe",
 	"DELETE /api/v1/admin/prompt-audit/events/:id":            "admin.prompt_audit.event.delete",
