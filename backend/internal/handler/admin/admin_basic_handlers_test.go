@@ -29,6 +29,8 @@ func setupAdminRouter() (*gin.Engine, *stubAdminService) {
 	router.DELETE("/api/v1/admin/users/:id", userHandler.Delete)
 	router.POST("/api/v1/admin/users/:id/balance", userHandler.UpdateBalance)
 	router.GET("/api/v1/admin/users/:id/api-keys", userHandler.GetUserAPIKeys)
+	router.POST("/api/v1/admin/users/:id/api-keys/ensure", userHandler.EnsureUserAPIKey)
+	router.POST("/api/v1/admin/provisioning/employee-api-key", userHandler.ProvisionEmployeeAPIKey)
 	router.GET("/api/v1/admin/users/:id/usage", userHandler.GetUserUsage)
 
 	router.GET("/api/v1/admin/groups", groupHandler.List)

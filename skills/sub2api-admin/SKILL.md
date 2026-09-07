@@ -33,6 +33,7 @@ node scripts/sub2api-admin.js accounts get 40
 node scripts/sub2api-admin.js accounts usage 40
 node scripts/sub2api-admin.js accounts set-schedulable 40 true
 node scripts/sub2api-admin.js accounts bulk-update --ids 40,39 --json '{"concurrency":10}'
+node scripts/sub2api-admin.js users provision-api-key --email hourong@zhihu.com --group-id 2 --idempotency-key '<stable-digest>'
 node scripts/sub2api-admin.js redeem-codes list --page-size 20
 node scripts/sub2api-admin.js redeem-codes generate --json '{"count":1,"type":"balance","value":10}' --idempotency-key redeem-$(date +%s)
 node scripts/sub2api-admin.js redeem-codes create-and-redeem --json '{"code":"order_123","type":"balance","value":10,"user_id":123}' --idempotency-key order-123

@@ -33,6 +33,58 @@ func TestDeriveAuditAction(t *testing.T) {
 	}
 }
 
+func TestAdminEnsureAPIKeyAuditRouteHasStableAction(t *testing.T) {
+	route := "POST /api/v1/admin/users/:id/api-keys/ensure"
+	require.Equal(t, "admin.users.api_keys.ensure", auditActionOverrides[route])
+	require.Equal(
+		t,
+		"admin.provisioning.employee_api_key.ensure",
+		auditActionOverrides["POST /api/v1/admin/provisioning/employee-api-key"],
+	)
+}
+
+func TestAdminEnsureAPIKeyAuditRedactsCredentialMaterial(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	repository := &auditCaptureRepository{}
+	auditService := service.NewAuditLogService(repository, nil)
+	auditService.Start()
+
+	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		c.Set(string(ContextKeyUser), AuthSubject{UserID: 77})
+		c.Set(string(ContextKeyUserRole), "admin")
+		c.Next()
+	})
+	router.Use(gin.HandlerFunc(NewAuditLogMiddleware(auditService)))
+	router.POST("/api/v1/admin/users/:id/api-keys/ensure", func(c *gin.Context) {
+		c.JSON(http.StatusBadRequest, gin.H{"code": "INVALID_REQUEST"})
+	})
+
+	const customKey = "sk-audit-canary-must-not-be-stored"
+	const adminCredential = "credential-audit-canary-must-not-be-stored"
+	request := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/admin/users/7/api-keys/ensure",
+		bytes.NewBufferString(`{"name":"alice-zhishu-client","group_id":2,"expires_in_days":365,"custom_key":"`+customKey+`"}`),
+	)
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("x-api-key", adminCredential)
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, request)
+	require.Equal(t, http.StatusBadRequest, recorder.Code)
+	auditService.Stop()
+
+	repository.mu.Lock()
+	logs := append([]*service.AuditLog(nil), repository.logs...)
+	repository.mu.Unlock()
+	require.Len(t, logs, 1)
+	require.Equal(t, "admin.users.api_keys.ensure", logs[0].Action)
+	require.NotContains(t, logs[0].RequestBody, customKey)
+	require.Contains(t, logs[0].RequestBody, `"custom_key":"***"`)
+	require.NotContains(t, logs[0].CredentialMasked, adminCredential)
+	require.NotEmpty(t, logs[0].CredentialMasked)
+}
+
 type auditCaptureRepository struct {
 	mu   sync.Mutex
 	logs []*service.AuditLog

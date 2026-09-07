@@ -131,10 +131,28 @@ func (s *userRepoStubForGroupUpdate) RemoveGroupFromUserAllowedGroups(context.Co
 
 // apiKeyRepoStubForGroupUpdate implements APIKeyRepository for AdminUpdateAPIKeyGroupID tests.
 type apiKeyRepoStubForGroupUpdate struct {
-	key       *APIKey
-	getErr    error
-	updateErr error
-	updated   *APIKey // captures what was passed to Update
+	key           *APIKey
+	getErr        error
+	updateErr     error
+	updated       *APIKey // captures what was passed to Update
+	ensureKey     *APIKey
+	ensureCreated bool
+	ensureErr     error
+	ensureInput   *APIKey
+}
+
+func (s *apiKeyRepoStubForGroupUpdate) EnsureByUserIDAndName(_ context.Context, candidate *APIKey) (*APIKey, bool, error) {
+	copyCandidate := *candidate
+	s.ensureInput = &copyCandidate
+	if s.ensureErr != nil {
+		return nil, false, s.ensureErr
+	}
+	if s.ensureKey != nil {
+		copyKey := *s.ensureKey
+		return &copyKey, s.ensureCreated, nil
+	}
+	copyCandidate.ID = 101
+	return &copyCandidate, true, nil
 }
 
 func (s *apiKeyRepoStubForGroupUpdate) GetByID(_ context.Context, _ int64) (*APIKey, error) {

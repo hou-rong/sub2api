@@ -205,6 +205,92 @@ func (s *stubAdminService) GetUserAPIKeys(ctx context.Context, userID int64, pag
 	return s.apiKeys, int64(len(s.apiKeys)), nil
 }
 
+func (s *stubAdminService) ValidateUserAPIKeyProvisioningAccess(ctx context.Context, userID, groupID int64) error {
+	user, err := s.GetUser(ctx, userID)
+	if err != nil {
+		return err
+	}
+	if user == nil || !user.IsActive() {
+		return service.ErrAdminManagedUserInactive
+	}
+	group, err := s.GetGroup(ctx, groupID)
+	if err != nil {
+		return err
+	}
+	if group == nil || !group.IsActive() || !user.CanBindGroup(group.ID, group.IsExclusive) {
+		return service.ErrGroupNotAllowed
+	}
+	return nil
+}
+
+func (s *stubAdminService) EnsureUserAPIKey(ctx context.Context, userID int64, input service.AdminEnsureAPIKeyInput) (*service.AdminEnsureAPIKeyResult, error) {
+	for i := range s.apiKeys {
+		if s.apiKeys[i].UserID == userID && s.apiKeys[i].Name == input.Name {
+			return &service.AdminEnsureAPIKeyResult{APIKey: &s.apiKeys[i]}, nil
+		}
+	}
+	groupID := input.GroupID
+	key := service.APIKey{
+		ID:      int64(len(s.apiKeys) + 100),
+		UserID:  userID,
+		Key:     "sk-test-managed",
+		Name:    input.Name,
+		GroupID: &groupID,
+		Status:  service.StatusActive,
+	}
+	s.apiKeys = append(s.apiKeys, key)
+	return &service.AdminEnsureAPIKeyResult{Created: true, APIKey: &s.apiKeys[len(s.apiKeys)-1]}, nil
+}
+
+func (s *stubAdminService) ProvisionEmployeeAPIKey(ctx context.Context, input service.AdminProvisionEmployeeAPIKeyInput) (*service.AdminProvisionEmployeeAPIKeyResult, error) {
+	email := strings.ToLower(strings.TrimSpace(input.Email))
+	var user *service.User
+	userCreated := false
+	for i := range s.users {
+		if strings.EqualFold(strings.TrimSpace(s.users[i].Email), email) {
+			user = &s.users[i]
+			break
+		}
+	}
+	if user == nil {
+		username := strings.TrimSpace(input.Username)
+		if username == "" {
+			username, _, _ = strings.Cut(email, "@")
+		}
+		s.users = append(s.users, service.User{
+			ID:                   int64(100 + len(s.users)),
+			Email:                email,
+			Username:             username,
+			Notes:                "provisioned by zhishu",
+			Role:                 service.RoleUser,
+			Status:               service.StatusActive,
+			Concurrency:          input.Concurrency,
+			RPMLimit:             input.RPMLimit,
+			AllowedGroups:        []int64{input.APIKey.GroupID},
+			RestrictPublicGroups: true,
+		})
+		user = &s.users[len(s.users)-1]
+		userCreated = true
+	}
+	if !user.IsActive() {
+		return nil, service.ErrAdminManagedUserInactive
+	}
+	if input.APIKey.Name == "" {
+		localPart, _, _ := strings.Cut(email, "@")
+		input.APIKey.Name = localPart + "-zhishu-client"
+	}
+	ensured, err := s.EnsureUserAPIKey(ctx, user.ID, input.APIKey)
+	if err != nil {
+		return nil, err
+	}
+	return &service.AdminProvisionEmployeeAPIKeyResult{
+		UserCreated:   userCreated,
+		APIKeyCreated: ensured.Created,
+		User:          user,
+		APIKey:        ensured.APIKey,
+	}, nil
+}
+
 func (s *stubAdminService) GetUserUsageStats(ctx context.Context, userID int64, period string) (any, error) {
 	return map[string]any{"user_id": userID}, nil
 }
@@ -283,6 +369,11 @@ func (s *stubAdminService) GetAllGroupsIncludingInactive(ctx context.Context) ([
 }
 
 func (s *stubAdminService) GetGroup(ctx context.Context, id int64) (*service.Group, error) {
+	for i := range s.groups {
+		if s.groups[i].ID == id {
+			return &s.groups[i], nil
+		}
+	}
 	group := service.Group{ID: id, Name: "group", Status: service.StatusActive}
 	return &group, nil
 }

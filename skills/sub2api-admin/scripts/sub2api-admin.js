@@ -44,6 +44,7 @@ function usage() {
   sub2api-admin.js accounts import-codex-session --json '{...}' | --file payload.json
   sub2api-admin.js accounts antigravity-default-model-mapping
   sub2api-admin.js accounts import-json --file <path> --template-name <name> [--skip-name <name>] [--dry-run]
+  sub2api-admin.js users provision-api-key --email EMAIL --group-id ID --idempotency-key KEY [--concurrency 5] [--expires-in-days 365] [--username NAME] [--key-name NAME]
   sub2api-admin.js groups all
   sub2api-admin.js proxies all
   sub2api-admin.js redeem-codes list [--page-size 200] [--page N] [--type balance] [--status unused] [--search TEXT] [--sort-by id] [--sort-order desc]
@@ -58,7 +59,7 @@ function usage() {
   sub2api-admin.js redeem-codes stats
   sub2api-admin.js error-rules list|get|create|update|delete|toggle ...
   sub2api-admin.js tls-profiles list|get|create|update|delete ...
-  sub2api-admin.js api <GET|POST|PUT|DELETE> <admin-path> [--json '{...}' | --file payload.json]
+  sub2api-admin.js api <GET|POST|PUT|DELETE> <admin-path> [--json '{...}' | --file payload.json] [--idempotency-key KEY]
 `);
 }
 
@@ -276,6 +277,21 @@ function redeemCodesQuery(flags) {
 function idempotencyHeaders(flags) {
   if (!flags["idempotency-key"]) return {};
   return { "Idempotency-Key": flags["idempotency-key"] };
+}
+
+function parseCSV(value) {
+  if (!value) return [];
+  return String(value)
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function finiteNumberFlag(flags, name, defaultValue) {
+  const raw = flags[name] === undefined ? defaultValue : flags[name];
+  const value = Number(raw);
+  if (!Number.isFinite(value)) throw new Error(`--${name} must be a finite number`);
+  return value;
 }
 
 function printJson(data) {
@@ -598,6 +614,43 @@ async function commandGroups(args) {
   throw new Error(`unknown groups subcommand: ${sub || "(missing)"}`);
 }
 
+async function commandUsers(args) {
+  const sub = args.positional[1];
+  if (sub === "provision-api-key") {
+    if (!args.flags.email) throw new Error("users provision-api-key requires --email");
+    if (!args.flags["group-id"]) throw new Error("users provision-api-key requires --group-id");
+    if (!args.flags["idempotency-key"]) {
+      throw new Error("users provision-api-key requires --idempotency-key");
+    }
+    const payload = {
+      email: args.flags.email,
+      username: args.flags.username,
+      key_name: args.flags["key-name"],
+      group_id: finiteNumberFlag(args.flags, "group-id"),
+      concurrency: finiteNumberFlag(args.flags, "concurrency", 5),
+      rpm_limit: finiteNumberFlag(args.flags, "rpm-limit", 0),
+      quota: finiteNumberFlag(args.flags, "quota", 0),
+      expires_in_days: finiteNumberFlag(args.flags, "expires-in-days", 365),
+      rate_limit_5h: finiteNumberFlag(args.flags, "rate-limit-5h", 0),
+      rate_limit_1d: finiteNumberFlag(args.flags, "rate-limit-1d", 0),
+      rate_limit_7d: finiteNumberFlag(args.flags, "rate-limit-7d", 0),
+      ip_whitelist: parseCSV(args.flags["ip-whitelist"]),
+      ip_blacklist: parseCSV(args.flags["ip-blacklist"]),
+    };
+    for (const key of ["username", "key_name"]) {
+      if (payload[key] === undefined) delete payload[key];
+    }
+    printJson(await adminRequestWithHeaders(
+      "POST",
+      "/admin/provisioning/employee-api-key",
+      payload,
+      idempotencyHeaders(args.flags),
+    ));
+    return;
+  }
+  throw new Error(`unknown users subcommand: ${sub || "(missing)"}`);
+}
+
 async function commandProxies(args) {
   const sub = args.positional[1];
   if (sub === "all") {
@@ -712,7 +765,7 @@ async function commandApi(args) {
   const pathname = args.positional[2];
   if (!method || !pathname) throw new Error("api requires <GET|POST|PUT|DELETE> <admin-path>");
   const body = readJsonPayload(args.flags, { required: false });
-  printJson(await adminRequest(method.toUpperCase(), pathname, body));
+  printJson(await adminRequestWithHeaders(method.toUpperCase(), pathname, body, idempotencyHeaders(args.flags)));
 }
 
 async function main() {
@@ -724,6 +777,10 @@ async function main() {
   }
   if (root === "accounts") {
     await commandAccounts(args);
+    return;
+  }
+  if (root === "users") {
+    await commandUsers(args);
     return;
   }
   if (root === "groups") {

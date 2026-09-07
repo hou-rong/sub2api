@@ -180,12 +180,9 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		originalModel = reqModel
 	}
 
-	if account.Platform == PlatformKimi {
-		// Kimi Code API Key 可通过通用 Responses ↔ Chat Completions 桥接供
-		// Codex 使用；OAuth token 仍只支持原生 /chat/completions。
-		if account.IsKimiAPIKey() {
-			return s.forwardResponsesViaRawChatCompletions(ctx, c, account, body)
-		}
+	if account.Platform == PlatformKimi && !account.IsKimiAPIKey() {
+		// OAuth token 仍只支持原生 /chat/completions。API Key 账号继续按
+		// api_protocol 选择原生 Responses 或 Chat Completions 桥接。
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": gin.H{
 				"type":    "invalid_request_error",

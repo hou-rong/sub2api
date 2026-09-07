@@ -42,10 +42,6 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 	if _, err := s.prepareCodexAccountIdentitySource(ctx, c, account); err != nil {
 		return nil, err
 	}
-	if account != nil && account.IsKimiAPIKey() {
-		return s.forwardAnthropicViaRawChatCompletions(ctx, c, account, body, defaultMappedModel)
-	}
-
 	// 入口分流（国产供应商 Anthropic 协议）：上游为供应商原生 Anthropic 端点时，
 	// /v1/messages 请求零转换直通（仅模型名映射 + 少量 body 清洗），完整保留
 	// thinking / tool_use / cache 语义，适配 Claude Code 等原生客户端。
@@ -64,7 +60,7 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 	startTime := time.Now()
 
 	// Kimi OAuth 上游只在本服务暴露 OpenAI 兼容 /chat/completions。
-	if account != nil && account.Platform == PlatformKimi {
+	if account != nil && account.Platform == PlatformKimi && !account.IsKimiAPIKey() {
 		writeAnthropicError(c, http.StatusBadRequest, "invalid_request_error", "Kimi OAuth accounts only support /v1/chat/completions")
 		return nil, fmt.Errorf("kimi oauth platform does not support /v1/messages")
 	}
