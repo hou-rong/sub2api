@@ -64,9 +64,13 @@ func TestEnsureUserAPIKeyReplaysCreatedResultWithoutPersistingCredential(t *test
 	require.Empty(t, first.Header().Get("X-Idempotency-Replayed"))
 	var firstPayload map[string]any
 	require.NoError(t, json.Unmarshal(first.Body.Bytes(), &firstPayload))
-	firstData := firstPayload["data"].(map[string]any)
+	firstData, ok := firstPayload["data"].(map[string]any)
+	require.True(t, ok, "response data must be an object")
 	require.Equal(t, true, firstData["created"])
-	firstKey := firstData["api_key"].(map[string]any)["key"].(string)
+	firstAPIKey, ok := firstData["api_key"].(map[string]any)
+	require.True(t, ok, "response api_key must be an object")
+	firstKey, ok := firstAPIKey["key"].(string)
+	require.True(t, ok, "response api_key.key must be a string")
 	require.True(t, strings.HasPrefix(firstKey, "sk-"))
 
 	replayed := request(2)
@@ -74,9 +78,14 @@ func TestEnsureUserAPIKeyReplaysCreatedResultWithoutPersistingCredential(t *test
 	require.Equal(t, "true", replayed.Header().Get("X-Idempotency-Replayed"))
 	var replayedPayload map[string]any
 	require.NoError(t, json.Unmarshal(replayed.Body.Bytes(), &replayedPayload))
-	replayedData := replayedPayload["data"].(map[string]any)
+	replayedData, ok := replayedPayload["data"].(map[string]any)
+	require.True(t, ok, "replayed response data must be an object")
 	require.Equal(t, true, replayedData["created"])
-	require.Equal(t, firstKey, replayedData["api_key"].(map[string]any)["key"])
+	replayedAPIKey, ok := replayedData["api_key"].(map[string]any)
+	require.True(t, ok, "replayed response api_key must be an object")
+	replayedKey, ok := replayedAPIKey["key"].(string)
+	require.True(t, ok, "replayed response api_key.key must be a string")
+	require.Equal(t, firstKey, replayedKey)
 
 	repo.mu.Lock()
 	for _, record := range repo.data {
