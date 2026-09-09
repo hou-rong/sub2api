@@ -518,7 +518,7 @@ func (s *AccountService) TestCredentials(ctx context.Context, id int64) error {
 	case PlatformKimi:
 		// Kimi OAuth 通过设备码换发/刷新校验；API Key 经余额/额度探测与转发路径验证。
 		return nil
-	case PlatformZhipu, PlatformDeepseek:
+	case PlatformZhipu, PlatformDeepseek, PlatformMiniMax:
 		// 国产 OpenAI 兼容供应商：凭证为 API Key，实际可用性经余额/额度探测与转发路径验证。
 		return nil
 	default:

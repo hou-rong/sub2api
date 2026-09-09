@@ -134,3 +134,19 @@ describe('PlatformTypeBadge Kimi membership levels', () => {
     expect(wrapper.text()).not.toContain('Free')
   })
 })
+
+describe('PlatformTypeBadge MiniMax', () => {
+  it('labels MiniMax API keys as MiniMax, not Gemini', () => {
+    const wrapper = mount(PlatformTypeBadge, {
+      props: {
+        platform: 'minimax',
+        type: 'apikey',
+      },
+    })
+
+    expect(wrapper.text()).toContain('MiniMax')
+    expect(wrapper.text()).toContain('Key')
+    expect(wrapper.text()).not.toContain('Gemini')
+    expect(wrapper.html()).toContain('bg-rose-100')
+  })
+})
