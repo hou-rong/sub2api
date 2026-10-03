@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/kimi"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
@@ -526,4 +527,74 @@ func TestAccountHandlerSyncUpstreamModels_MetadataEnrichmentFailureReturnsWarnin
 	require.Equal(t, []string{"x-preview-f-free"}, resp.Data.Models)
 	require.Len(t, resp.Data.Warnings, 1)
 	require.Equal(t, "upstream_model_metadata_incomplete", resp.Data.Warnings[0].Code)
+}
+
+func TestAccountHandlerGetAvailableModels_TypeSafeOnlyReturnsJev(t *testing.T) {
+	for _, credentials := range []map[string]any{
+		{"api_key": "ts-secret"},
+		{"api_key": "ts-secret", "model_mapping": map[string]any{"jev-latest": "jev-latest"}},
+	} {
+		svc := &availableModelsAdminService{
+			stubAdminService: newStubAdminService(),
+			account: service.Account{
+				ID:          46,
+				Name:        "typesafe",
+				Platform:    service.PlatformTypeSafe,
+				Type:        service.AccountTypeAPIKey,
+				Status:      service.StatusActive,
+				Credentials: credentials,
+			},
+		}
+		router := setupAvailableModelsRouter(svc)
+
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/admin/accounts/46/models", nil))
+		require.Equal(t, http.StatusOK, rec.Code)
+
+		var resp struct {
+			Data []struct {
+				ID string `json:"id"`
+			} `json:"data"`
+		}
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+		require.Len(t, resp.Data, 1)
+		require.Equal(t, "jev-latest", resp.Data[0].ID)
+	}
+}
+
+func TestAccountHandlerGetAvailableModels_KimiPreservesCatalogAndAliases(t *testing.T) {
+	for _, accountType := range []string{service.AccountTypeOAuth, service.AccountTypeAPIKey} {
+		for _, mapped := range []bool{false, true} {
+			name := accountType + "/default"
+			credentials := map[string]any{}
+			wantIDs := kimi.DefaultModelIDs()
+			if mapped {
+				name = accountType + "/mapped"
+				credentials["model_mapping"] = map[string]any{"coding-alias": "kimi-for-coding", "k3": "k3"}
+				wantIDs = []string{"coding-alias", "k3"}
+			}
+			t.Run(name, func(t *testing.T) {
+				svc := &availableModelsAdminService{
+					stubAdminService: newStubAdminService(),
+					account: service.Account{
+						ID: 47, Name: "kimi", Platform: service.PlatformKimi,
+						Type: accountType, Status: service.StatusActive, Credentials: credentials,
+					},
+				}
+				rec := httptest.NewRecorder()
+				setupAvailableModelsRouter(svc).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/admin/accounts/47/models", nil))
+				require.Equal(t, http.StatusOK, rec.Code)
+				var resp struct {
+					Data []kimi.Model `json:"data"`
+				}
+				require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+				ids := make([]string, 0, len(resp.Data))
+				for _, model := range resp.Data {
+					ids = append(ids, model.ID)
+					require.Equal(t, "moonshot", model.OwnedBy)
+				}
+				require.ElementsMatch(t, wantIDs, ids)
+			})
+		}
+	}
 }
