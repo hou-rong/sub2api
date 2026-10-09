@@ -122,6 +122,31 @@ func TestForwardAsChatCompletionsForKimiMapsModelAndInjectsFingerprintHeaders(t 
 	require.Equal(t, http.StatusOK, recorder.Code)
 }
 
+func TestKimiOAuthDoesNotEnterGenericMultiProtocolForwarding(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, endpoint := range []string{"/v1/responses", "/v1/messages"} {
+		t.Run(endpoint, func(t *testing.T) {
+			body := []byte(`{"model":"kimi","input":"hi","messages":[{"role":"user","content":"hi"}]}`)
+			recorder := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(recorder)
+			c.Request = httptest.NewRequest(http.MethodPost, endpoint, bytes.NewReader(body))
+			upstream := &httpUpstreamRecorder{}
+			svc := &OpenAIGatewayService{cfg: rawChatCompletionsTestConfig(), httpUpstream: upstream}
+			account := kimiOAuthTestAccount(79)
+			var err error
+			if endpoint == "/v1/responses" {
+				_, err = svc.Forward(context.Background(), c, account, body)
+			} else {
+				_, err = svc.ForwardAsAnthropic(context.Background(), c, account, body, "", "")
+			}
+			require.Error(t, err)
+			require.Equal(t, http.StatusBadRequest, recorder.Code)
+			require.Contains(t, recorder.Body.String(), "Kimi OAuth accounts only support /v1/chat/completions")
+			require.Nil(t, upstream.lastReq, "OAuth tokens must not reach generic API-key endpoints")
+		})
+	}
+}
+
 func TestForwardAsChatCompletionsForKimiUsesCustomModelMapping(t *testing.T) {
 	t.Setenv(kimi.EnvDeviceName, "test-host")
 	gin.SetMode(gin.TestMode)
