@@ -26,6 +26,40 @@ func TestNormalizeKimiAPIKeyCredentialsRejectsMissingKey(t *testing.T) {
 	require.Contains(t, err.Error(), "Kimi API Key is required")
 }
 
+func TestNormalizeKimiCodingCredentialsSupportsInternationalEndpoint(t *testing.T) {
+	for _, baseURL := range []string{"https://api.kimi.ai/coding/v1", "https://api.kimi.ai:443/coding/v1/"} {
+		t.Run(baseURL, func(t *testing.T) {
+			credentials := map[string]any{"api_key": "kimi-secret", "account_mode": AccountModeCoding, "base_url": baseURL}
+			require.NoError(t, normalizeKimiAPIKeyCredentials(PlatformKimi, AccountTypeAPIKey, credentials))
+			account := &Account{Platform: PlatformKimi, Type: AccountTypeAPIKey, Credentials: credentials}
+			require.True(t, account.UsesKimiCodingAPI())
+			require.Equal(t, PlatformKimi, account.GetCodingPlanProvider())
+			for suffix, build := range map[string]func(string) (string, error){
+				"/chat/completions": kimi.BuildChatCompletionsURL,
+				"/models":           kimi.BuildModelsURL,
+				"/usages":           kimi.BuildUsagesURL,
+			} {
+				endpoint, err := build(account.GetKimiBaseURL())
+				require.NoError(t, err)
+				require.Equal(t, credentials["base_url"].(string)+suffix, endpoint)
+			}
+		})
+	}
+}
+
+func TestNormalizeKimiCodingCredentialsRejectsSpoofedInternationalEndpoint(t *testing.T) {
+	for _, baseURL := range []string{
+		"https://api.kimi.ai.attacker.example/coding/v1",
+		"https://api.kimi.ai@attacker.example/coding/v1",
+		"https://attacker.example/api.kimi.ai/coding/v1",
+	} {
+		t.Run(baseURL, func(t *testing.T) {
+			credentials := map[string]any{"api_key": "kimi-secret", "account_mode": AccountModeCoding, "base_url": baseURL}
+			require.Error(t, normalizeKimiAPIKeyCredentials(PlatformKimi, AccountTypeAPIKey, credentials))
+		})
+	}
+}
+
 func TestNormalizeKimiAPIKeyCredentialsRejectsWrongKimiPlatformEndpoint(t *testing.T) {
 	credentials := map[string]any{
 		"api_key":      "kimi-secret",

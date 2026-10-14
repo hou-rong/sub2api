@@ -68,7 +68,7 @@ const (
 
 var (
 	oauthEndpointAllowedHosts = []string{"kimi.com", "*.kimi.com"}
-	baseURLAllowedHosts       = []string{"api.kimi.com"}
+	baseURLAllowedHosts       = []string{"api.kimi.com", "api.kimi.ai"}
 )
 
 // DeviceAuthResponse 是 POST /api/oauth/device_authorization 的成功响应。
