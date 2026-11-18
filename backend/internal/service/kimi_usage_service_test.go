@@ -10,11 +10,54 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/kimi"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
+	"github.com/stretchr/testify/require"
 )
 
 type kimiUsageTokenStub struct {
 	token string
 	err   error
+}
+
+func TestFetchKimiUsageMonthlyPlans(t *testing.T) {
+	for _, accountType := range []string{AccountTypeOAuth, AccountTypeAPIKey} {
+		t.Run(accountType, func(t *testing.T) {
+			for _, tc := range []struct {
+				name, body string
+				fiveHour   bool
+				weekly     bool
+			}{
+				{"monthly and five hour", `{"usages":{"limit_5h":{"used_ratio":0.25},"limit_month_total":{"used_ratio":0.4,"reset_time":"2027-01-26T00:00:00Z"},"limit_month_code":{"used_ratio":0.9,"reset_time":"2027-01-20T00:00:00Z"}}}`, true, false},
+				{"monthly only", `{"usages":{"limit_month_code":{"used_ratio":0.9,"reset_time":"2027-01-26T00:00:00Z"}}}`, false, false},
+				{"weekly ratio overrides legacy counts", `{"usage":{"limit":100,"used":10},"usages":{"limit_7d":{"used_ratio":0.8},"limit_month_code":{"used_ratio":0.9,"reset_time":"2027-01-26T00:00:00Z"}}}`, false, true},
+			} {
+				t.Run(tc.name, func(t *testing.T) {
+					svc := &AccountUsageService{
+						kimiTokenProvider: &kimiUsageTokenStub{token: "test-token"},
+						httpUpstream:      &kimiUsageHTTPStub{status: http.StatusOK, response: tc.body},
+					}
+					account := &Account{ID: 1, Platform: PlatformKimi, Type: accountType}
+					usage, err := svc.fetchKimiUsage(context.Background(), account)
+					require.NoError(t, err)
+					require.NotNil(t, usage.ThirtyDay)
+					require.InDelta(t, 90, usage.ThirtyDay.Utilization, 0.001)
+					require.NotNil(t, usage.ThirtyDay.ResetsAt)
+					require.Equal(t, "2027-01-26T00:00:00Z", usage.ThirtyDay.ResetsAt.Format(time.RFC3339))
+					if tc.fiveHour {
+						require.NotNil(t, usage.FiveHour)
+						require.InDelta(t, 25, usage.FiveHour.Utilization, 0.001)
+					} else {
+						require.Nil(t, usage.FiveHour)
+					}
+					if tc.weekly {
+						require.NotNil(t, usage.SevenDay)
+						require.InDelta(t, 80, usage.SevenDay.Utilization, 0.001)
+					} else {
+						require.Nil(t, usage.SevenDay)
+					}
+				})
+			}
+		})
+	}
 }
 
 func (s *kimiUsageTokenStub) GetAccessToken(context.Context, *Account) (string, error) {

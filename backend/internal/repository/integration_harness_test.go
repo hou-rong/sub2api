@@ -39,6 +39,7 @@ var (
 	integrationEntClient   *dbent.Client
 	integrationRedis       *redisclient.Client
 	integrationPostgresDSN string
+	integrationDSN         string
 
 	redisNamespaceSeq uint64
 )
@@ -93,6 +94,7 @@ func TestMain(m *testing.M) {
 	}
 	integrationPostgresDSN = dsn
 
+	integrationDSN = dsn
 	integrationDB, err = openSQLWithRetry(ctx, dsn, 30*time.Second)
 	if err != nil {
 		log.Printf("failed to open sql db: %v", err)

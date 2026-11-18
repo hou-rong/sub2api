@@ -154,12 +154,40 @@ func (s *AccountUsageService) fetchKimiUsage(ctx context.Context, account *Accou
 	if err := json.Unmarshal(body, &payload); err != nil {
 		return nil, fmt.Errorf("decode Kimi usage response: %w", err)
 	}
-	usage := buildKimiUsageInfo(&payload, time.Now())
-	if usage.FiveHour == nil && usage.SevenDay == nil {
+	now := time.Now()
+	usage := buildKimiUsageInfo(&payload, now)
+	mergeKimiUsageTiers(usage, body, now)
+	if usage.FiveHour == nil && usage.SevenDay == nil && usage.ThirtyDay == nil {
 		return nil, fmt.Errorf("kimi usages API returned no recognizable usage windows")
 	}
 	s.persistKimiMembership(account, usage)
 	return usage, nil
+}
+
+// Reuse the upstream parser for new monthly plans while preserving the fork's
+// request counts and window metadata for legacy plans. The monthly parser
+// combines total/code limits conservatively, including the later reset time.
+func mergeKimiUsageTiers(info *UsageInfo, body []byte, now time.Time) {
+	_, hasWeeklyRatio := kimiUsedRatioTier(body, "limit_7d", "weekly")
+	for _, tier := range parseKimiUsageTiers(body) {
+		progress := &UsageProgress{Utilization: tier.UsedPercent}
+		if resetAt, err := time.Parse(time.RFC3339Nano, tier.ResetAt); err == nil {
+			progress.ResetsAt = &resetAt
+			progress.RemainingSeconds = max(0, int(resetAt.Sub(now).Seconds()))
+		}
+		switch tier.Window {
+		case "5h":
+			if info.FiveHour == nil || info.FiveHour.LimitRequests <= 0 {
+				info.FiveHour = progress
+			}
+		case "weekly":
+			if info.SevenDay == nil || hasWeeklyRatio {
+				info.SevenDay = progress
+			}
+		case "monthly":
+			info.ThirtyDay = progress
+		}
+	}
 }
 
 func buildKimiUsageInfo(payload *kimiUsageResponse, now time.Time) *UsageInfo {
